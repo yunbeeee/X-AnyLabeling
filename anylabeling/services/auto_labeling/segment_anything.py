@@ -48,6 +48,7 @@ class SegmentAnything(Model):
             "polygon": QCoreApplication.translate("Model", "Polygon"),
             "rectangle": QCoreApplication.translate("Model", "Rectangle"),
             "rotation": QCoreApplication.translate("Model", "Rotation"),
+            "mask": QCoreApplication.translate("Model", "Mask"),
         }
         default_output_mode = "polygon"
 
@@ -243,6 +244,14 @@ class SegmentAnything(Model):
             shape.closed = True
             shape.fill_color = "#000000"
             shape.line_color = "#000000"
+            shape.label = "AUTOLABEL_OBJECT"
+            shape.selected = False
+            shapes.append(shape)
+        elif self.output_mode == "mask":
+            # Create mask shape
+            shape = Shape(flags={})
+            shape.shape_type = "mask"
+            shape.mask = masks  # Store the binary mask
             shape.label = "AUTOLABEL_OBJECT"
             shape.selected = False
             shapes.append(shape)

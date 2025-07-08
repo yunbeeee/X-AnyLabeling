@@ -1,10 +1,11 @@
 """This module defines Canvas widget - the core component for drawing image labels"""
 
 import math
+import numpy as np
 from copy import deepcopy
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QWheelEvent
+from PyQt5.QtGui import QWheelEvent, QImage, QColor
 
 from anylabeling.services.auto_labeling.types import AutoLabelingMode
 from anylabeling.views.labeling.utils.colormap import label_colormap
@@ -47,9 +48,9 @@ class Canvas(
     CREATE, EDIT = 0, 1
 
     # polygon, rectangle, rotation, line, or point
-    _create_mode = "polygon"
+    _create_mode = "mask"
 
-    _fill_drawing = False
+    _fill_drawing = True
 
     def __init__(self, *args, **kwargs):
         self.epsilon = kwargs.pop("epsilon", 10.0)
@@ -135,6 +136,13 @@ class Canvas(
         self.is_loading = False
         self.loading_text = self.tr("Loading...")
         self.loading_angle = 0
+
+        # Brush mode init
+        self.brush_radius = 10
+        self.is_brush_mode = False
+        self.brush_modified = False
+        self._mask_qimage_cache = {}
+        self._mask_overlay_cache = {}
 
     def set_loading(self, is_loading: bool, loading_text: str = None):
         """Set loading state"""
@@ -459,6 +467,16 @@ class Canvas(
                     )
                     self.repaint()
             return
+        
+        # Brush mode
+        if (QtCore.Qt.LeftButton & ev.buttons()) and self.editing() and self.is_brush_mode:
+            # mask shape이 선택되어 있으면, 마우스 위치 상관없이 브러시 동작
+            for shape in self.shapes:
+                if shape.is_mask() and shape.selected:
+                    add = ev.modifiers() != QtCore.Qt.ControlModifier  # Ctrl for erasing
+                    self.edit_mask_with_brush(shape, ev.localPos(), radius=self.brush_radius, add=add)
+                    self.brush_modified = True
+                    break
 
         if self.editing() and self.is_move_editing:
             self.override_cursor(CURSOR_MOVE)
@@ -594,6 +612,7 @@ class Canvas(
     # QT Overload
     def mousePressEvent(self, ev):  # noqa: C901
         """Mouse press event"""
+        
         if self.is_loading:
             return
         pos = self.transform_pos(ev.localPos())
@@ -701,6 +720,17 @@ class Canvas(
                     pos, multiple_selection_mode=group_mode
                 )
                 self.prev_point = pos
+                # modified: 705-713
+                # Check if we're editing a mask shape
+                if self.is_brush_mode:
+                    # Find if we clicked on a mask shape
+                    for shape in self.shapes:
+                        if shape.is_mask() and shape.selected:
+                            # Edit mask with brush
+                            add = ev.modifiers() != QtCore.Qt.ControlModifier  # Ctrl for erasing
+                            self.edit_mask_with_brush(shape, ev.localPos(), radius=self.brush_radius, add=add)
+                            self.brush_modified = True
+                            break
                 self.prev_pan_point = ev.localPos()
                 self.repaint()
         elif ev.button() == QtCore.Qt.RightButton and self.editing():
@@ -720,6 +750,11 @@ class Canvas(
         """Mouse release event"""
         if self.is_loading:
             return
+
+        if self.brush_modified:
+            self.store_shapes()
+            self.brush_modified = False
+
         if ev.button() == QtCore.Qt.RightButton:
             menu = self.menus[len(self.selected_shapes_copy) > 0]
             self.restore_cursor()
@@ -820,17 +855,30 @@ class Canvas(
 
         else:
             for shape in reversed(self.shapes):
-                if (
-                    self.is_visible(shape)
-                    and len(shape.points) > 1
-                    and shape.contains_point(point)
-                ):
+                if not self.is_visible(shape):
+                    continue
+                if shape.is_mask():
+                    if shape.contains_point(point):
+                        print(f"[DEBUG] select_shape_point: selected mask")
+                        # 이하 기존 선택 로직 복사
+                        self.set_hiding()
+                        if shape not in self.selected_shapes:
+                            if multiple_selection_mode:
+                                self.selection_changed.emit(self.selected_shapes + [shape])
+                            else:
+                                self.selection_changed.emit([shape])
+                            self.h_shape_is_selected = False
+                        else:
+                            self.h_shape_is_selected = True
+                        self.calculate_offsets(point)
+                        return
+                elif len(shape.points) > 1 and shape.contains_point(point):
+                    print(f"[DEBUG] select_shape_point: selected shape_type={shape.shape_type}")
+                    # 이하 기존 선택 로직
                     self.set_hiding()
                     if shape not in self.selected_shapes:
                         if multiple_selection_mode:
-                            self.selection_changed.emit(
-                                self.selected_shapes + [shape]
-                            )
+                            self.selection_changed.emit(self.selected_shapes + [shape])
                         else:
                             self.selection_changed.emit([shape])
                         self.h_shape_is_selected = False
@@ -1264,6 +1312,18 @@ class Canvas(
                     shape.selected or shape == self.h_hape
                 )
                 shape.paint(p)
+                # modified: 1277-1279
+                # Draw mask if shape is mask type
+                if shape.is_mask() and shape.mask is not None:
+                    self.paint_mask(p, shape)
+                    # Draw red outline if selected
+                    if shape.selected:
+                        bbox = shape.bounding_rect()
+                        pen = QtGui.QPen(QtGui.QColor(255, 0, 0, 120), 3)
+                        pen.setStyle(QtCore.Qt.SolidLine)
+                        p.setPen(pen)
+                        p.setBrush(QtCore.Qt.NoBrush)
+                        p.drawRect(bbox)
 
             if (
                 shape.shape_type == "rotation"
@@ -1489,6 +1549,66 @@ class Canvas(
             )
 
         p.end()
+    # modified: 1506-1557
+    def paint_mask(self, painter, shape):
+        """Paint mask on canvas"""
+        if not shape.is_mask() or shape.mask is None:
+            return
+        
+        import numpy as np
+        from PyQt5.QtGui import QImage, QColor
+        
+        mask = (shape.mask.astype(np.uint8))
+        height, width = mask.shape
+        overlay = self._mask_overlay_cache.get(shape)
+        if overlay is None:
+            overlay = QImage(width, height, QImage.Format_ARGB32)
+            overlay.fill(0)
+            # Set color based on shape selection
+            if shape.selected:
+                color = QColor(255, 255, 255, 100)  # White for selected
+            else:
+                color = QColor(0, 255, 0, 100)  # Green for normal
+            # Direct pixel access for ARGB32
+            for y in range(height):
+                for x in range(width):
+                    if mask[y, x]:
+                        overlay.setPixelColor(x, y, color)
+            self._mask_overlay_cache[shape] = overlay
+        painter.drawImage(0, 0, overlay)
+
+        # # Fill mask area with color
+        # for y in range(height):
+        #     for x in range(width):
+        #         if mask[y, x] > 0:
+        #             overlay.setPixelColor(x, y, color)
+        
+        # # Draw overlay on canvas
+        # painter.drawImage(0, 0, overlay)
+
+    def edit_mask_with_brush(self, shape, pos, radius=10, add=True):
+        """Edit mask with brush at given position"""
+        import numpy as np  
+        if not shape.is_mask() or shape.mask is None:
+            return
+        from anylabeling.views.labeling.utils.mask_utils import apply_brush_to_mask
+        # Convert canvas position to image coordinates
+        image_pos = self.transform_pos(pos)
+        x, y = int(image_pos.x()), int(image_pos.y())
+        
+        # Apply brush to mask
+        modified_mask = apply_brush_to_mask(shape.mask, x, y, radius, add)
+        if not np.array_equal(shape.mask, modified_mask):
+            shape.mask = modified_mask
+            self._mask_qimage_cache.pop(shape, None)
+            self._mask_overlay_cache.pop(shape, None)
+            # 브러시로 실제 변경이 일어났음을 기록
+            self.brush_modified = True
+        self.update()
+        # # Update canvas
+        # x, y = int(image_pos.x()), int(image_pos.y())
+        # r = self.brush_radius + 2 
+        # self.update(x - r, y - r, 2*r, 2*r)
 
     def transform_pos(self, point):
         """Convert from widget-logical coordinates to painter-logical ones."""
@@ -1863,6 +1983,12 @@ class Canvas(
         """Key press event"""
         modifiers = ev.modifiers()
         key = ev.key()
+        # brush mode toggle
+        if key == QtCore.Qt.Key_M:
+            self.is_brush_mode = not self.is_brush_mode
+            self.override_cursor(CURSOR_DRAW if self.is_brush_mode else CURSOR_DEFAULT)
+            return
+        
         if self.drawing():
             if key == QtCore.Qt.Key_Escape and self.current:
                 self.current = None

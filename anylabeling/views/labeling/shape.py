@@ -70,6 +70,7 @@ class Shape:
         direction=0,
         attributes={},
         kie_linking=[],
+        mask=None, ## modified: add mask type
     ):
         self.label = label
         self.score = score
@@ -92,6 +93,9 @@ class Shape:
         self.direction = direction
         self.center = None
         self.show_degrees = True
+
+        # Mask setting
+        self.mask = mask
 
         self._highlight_index = None
         self._highlight_mode = self.NEAR_VERTEX
@@ -126,6 +130,14 @@ class Shape:
         }
         if self.shape_type == "rotation":
             dictData["direction"] = self.direction
+        if self.shape_type == "mask" and self.mask is not None: # modified: 133-140
+            import base64
+            import numpy as np
+            # Encode mask as base64 string
+            mask_bytes = self.mask.tobytes()
+            dictData["mask"] = base64.b64encode(mask_bytes).decode('utf-8')
+            dictData["mask_shape"] = self.mask.shape
+            dictData["mask_dtype"] = str(self.mask.dtype)
         dictData = {
             **self.other_data,
             **dictData,
@@ -145,6 +157,14 @@ class Shape:
         self.kie_linking = data.get("kie_linking", [])
         if self.shape_type == "rotation":
             self.direction = data.get("direction", 0)
+        if self.shape_type == "mask" and "mask" in data: # modified: 160-167
+            import base64
+            import numpy as np
+            # Decode mask from base64 string
+            mask_bytes = base64.b64decode(data["mask"])
+            mask_shape = data["mask_shape"]
+            mask_dtype = data["mask_dtype"]
+            self.mask = np.frombuffer(mask_bytes, dtype=mask_dtype).reshape(mask_shape)
         self.other_data = {k: v for k, v in data.items() if k not in self.KEYS}
         if close:
             self.close()
@@ -174,6 +194,7 @@ class Shape:
             "line",
             "circle",
             "linestrip",
+            "mask", # modified:
         ]
 
     def close(self):
@@ -381,6 +402,12 @@ class Shape:
 
     def contains_point(self, point):
         """Check if shape contains a point"""
+        if self.is_mask() and self.mask is not None:
+            print("[DEBUG] contains_point: mask is not None")
+            x, y = int(point.x()), int(point.y())
+            if 0 <= y < self.mask.shape[0] and 0 <= x < self.mask.shape[1]:
+                return self.mask[y, x] > 0
+            return False
         return self.make_path().contains(point)
 
     def get_circle_rect_from_line(self, line):
@@ -395,6 +422,8 @@ class Shape:
 
     def make_path(self):
         """Create a path from shape"""
+        if self.is_mask():
+            return QtGui.QPainterPath()
         if self.shape_type == "rectangle":
             path = QtGui.QPainterPath(self.points[0])
             for p in self.points[1:]:
@@ -412,6 +441,14 @@ class Shape:
 
     def bounding_rect(self):
         """Return bounding rectangle of the shape"""
+        if self.is_mask() and self.mask is not None:
+            import numpy as np
+            ys, xs = np.nonzero(self.mask)
+            if len(xs) == 0 or len(ys) == 0:
+                return QtCore.QRectF()
+            x_min, x_max = xs.min(), xs.max()
+            y_min, y_max = ys.min(), ys.max()
+            return QtCore.QRectF(x_min, y_min, x_max - x_min + 1, y_max - y_min + 1)
         return self.make_path().boundingRect()
 
     def move_by(self, offset):
@@ -449,3 +486,17 @@ class Shape:
 
     def __setitem__(self, key, value):
         self.points[key] = value
+
+    # modified: 475-486
+    def is_mask(self):
+        """Check if shape is a mask type"""
+        return self.shape_type == "mask"
+
+    def get_mask(self):
+        """Get mask data"""
+        return self.mask if self.is_mask() else None
+
+    def set_mask(self, mask):
+        """Set mask data"""
+        if self.is_mask():
+            self.mask = mask

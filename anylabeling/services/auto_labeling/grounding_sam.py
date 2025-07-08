@@ -242,6 +242,7 @@ class GroundingSAM(Model):
             "polygon": QCoreApplication.translate("Model", "Polygon"),
             "rectangle": QCoreApplication.translate("Model", "Rectangle"),
             "rotation": QCoreApplication.translate("Model", "Rotation"),
+            "mask": QCoreApplication.translate("Model", "Mask"),
         }
         default_output_mode = "polygon"
 

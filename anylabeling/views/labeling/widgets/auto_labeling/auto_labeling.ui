@@ -77,6 +77,11 @@
          <string>rotation</string>
         </property>
        </item>
+       <item>
+        <property name="text">
+         <string>mask</string>
+        </property>
+       </item>
       </widget>
      </item>
      <item>
