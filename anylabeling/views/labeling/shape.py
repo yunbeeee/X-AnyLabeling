@@ -403,7 +403,7 @@ class Shape:
     def contains_point(self, point):
         """Check if shape contains a point"""
         if self.is_mask() and self.mask is not None:
-            print("[DEBUG] contains_point: mask is not None")
+            # print("[DEBUG] contains_point: mask is not None")
             x, y = int(point.x()), int(point.y())
             if 0 <= y < self.mask.shape[0] and 0 <= x < self.mask.shape[1]:
                 return self.mask[y, x] > 0

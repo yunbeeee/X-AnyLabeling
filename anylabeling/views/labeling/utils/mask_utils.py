@@ -30,6 +30,7 @@ def apply_brush_to_mask(mask, center_x, center_y, radius, add=True):
         mask = np.logical_or(mask, brush)
     else:
         mask = np.logical_and(mask, ~brush)
+    print(f"[DEBUG][apply_brush_to_mask] at ({center_x},{center_y}), add={add}, sum: {mask.sum()}")
     
     return mask.astype(np.uint8)
 

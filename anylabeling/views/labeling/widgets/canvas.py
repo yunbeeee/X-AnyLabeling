@@ -340,6 +340,25 @@ class Canvas(
         self.prev_move_point = pos
         self.repaint()
 
+        if self.is_brush_mode and bool(ev.buttons() & QtCore.Qt.LeftButton) and self.editing():
+            if hasattr(self, '_brush_target_shape') and self._brush_target_shape is not None:
+                add = (ev.modifiers() != QtCore.Qt.ControlModifier)
+                curr = ev.localPos()
+                prev = getattr(self, '_prev_brush_pos', None)
+                if prev is not None:
+                    # 두 점 사이를 일정 간격으로 샘플링
+                    dist = ((curr.x() - prev.x()) ** 2 + (curr.y() - prev.y()) ** 2) ** 0.5
+                    steps = max(1, int(dist // (self.brush_radius // 2)))
+                    for i in range(steps + 1):
+                        t = i / steps
+                        x = prev.x() * (1 - t) + curr.x() * t
+                        y = prev.y() * (1 - t) + curr.y() * t
+                        self.edit_mask_with_brush(self._brush_target_shape, QtCore.QPointF(x, y), radius=self.brush_radius, add=add)
+                else:
+                    self.edit_mask_with_brush(self._brush_target_shape, curr, radius=self.brush_radius, add=add)
+                self._prev_brush_pos = curr
+                self.brush_modified = True
+            return  # 브러시 모드일 때는 다른 동작 무시
         # Polygon drawing.
         if self.drawing():
             line_color = utils.hex_to_rgb(self.cross_line_color)
@@ -467,16 +486,7 @@ class Canvas(
                     )
                     self.repaint()
             return
-        
-        # Brush mode
-        if (QtCore.Qt.LeftButton & ev.buttons()) and self.editing() and self.is_brush_mode:
-            # mask shape이 선택되어 있으면, 마우스 위치 상관없이 브러시 동작
-            for shape in self.shapes:
-                if shape.is_mask() and shape.selected:
-                    add = ev.modifiers() != QtCore.Qt.ControlModifier  # Ctrl for erasing
-                    self.edit_mask_with_brush(shape, ev.localPos(), radius=self.brush_radius, add=add)
-                    self.brush_modified = True
-                    break
+
 
         if self.editing() and self.is_move_editing:
             self.override_cursor(CURSOR_MOVE)
@@ -612,10 +622,24 @@ class Canvas(
     # QT Overload
     def mousePressEvent(self, ev):  # noqa: C901
         """Mouse press event"""
-        
         if self.is_loading:
             return
         pos = self.transform_pos(ev.localPos())
+        if self.is_brush_mode:
+            # # 1. 먼저 shape 선택 처리
+            # self.select_shape_point(pos, multiple_selection_mode=False)
+            # # 2. 선택된 마스크 shape를 타겟으로 저장
+            # self._brush_target_shape = None
+            # for shape in self.shapes:
+            #     if shape.is_mask() and shape.selected:
+            #         self._brush_target_shape = shape
+            #         break
+            #     # 브러시 모드에서는 shape 선택 불가, 현재 선택된 mask만 편집
+            if self.selected_shapes and self.selected_shapes[0].is_mask():
+                self._brush_target_shape = self.selected_shapes[0]
+            else:
+                self._brush_target_shape = None
+            self._prev_brush_pos = None  # 브러시 드래그 시작점 초기화
         if ev.button() == QtCore.Qt.LeftButton:
             if self.drawing():
                 if self.current:
@@ -744,6 +768,8 @@ class Canvas(
                 )
                 self.repaint()
             self.prev_point = pos
+        
+        # super().mousePressEvent(ev)
 
     # QT Overload
     def mouseReleaseEvent(self, ev):
@@ -754,6 +780,10 @@ class Canvas(
         if self.brush_modified:
             self.store_shapes()
             self.brush_modified = False
+
+        # 브러시 드래그 종료 시 타겟 초기화
+        if self.is_brush_mode and ev.button() == QtCore.Qt.LeftButton:
+            self._brush_target_shape = None
 
         if ev.button() == QtCore.Qt.RightButton:
             menu = self.menus[len(self.selected_shapes_copy) > 0]
@@ -777,6 +807,7 @@ class Canvas(
                     )
 
         self.store_moving_shape()
+        # super().mouseReleaseEvent(ev)
 
     def end_move(self, copy):
         """End of move"""
@@ -1577,38 +1608,24 @@ class Canvas(
             self._mask_overlay_cache[shape] = overlay
         painter.drawImage(0, 0, overlay)
 
-        # # Fill mask area with color
-        # for y in range(height):
-        #     for x in range(width):
-        #         if mask[y, x] > 0:
-        #             overlay.setPixelColor(x, y, color)
-        
-        # # Draw overlay on canvas
-        # painter.drawImage(0, 0, overlay)
-
     def edit_mask_with_brush(self, shape, pos, radius=10, add=True):
-        """Edit mask with brush at given position"""
-        import numpy as np  
+        import numpy as np
         if not shape.is_mask() or shape.mask is None:
+            print("[DEBUG] shape is not mask or mask is None")
             return
         from anylabeling.views.labeling.utils.mask_utils import apply_brush_to_mask
-        # Convert canvas position to image coordinates
         image_pos = self.transform_pos(pos)
         x, y = int(image_pos.x()), int(image_pos.y())
-        
-        # Apply brush to mask
-        modified_mask = apply_brush_to_mask(shape.mask, x, y, radius, add)
-        if not np.array_equal(shape.mask, modified_mask):
-            shape.mask = modified_mask
-            self._mask_qimage_cache.pop(shape, None)
-            self._mask_overlay_cache.pop(shape, None)
-            # 브러시로 실제 변경이 일어났음을 기록
-            self.brush_modified = True
+        # 핵심 디버깅: 실제로 mask가 바뀌는지 한 줄만 출력
+        before = shape.mask.copy()
+        shape.mask = apply_brush_to_mask(shape.mask, x, y, radius, add)
+        changed = not np.array_equal(before, shape.mask)
+        # print(f"[DEBUG][mask] ({x},{y}) add={add} changed={before != changed} sum: {before}→{changed}")
+        # self._prev_brush_pos = QtCore.QPointF(x, y)
+        self._mask_qimage_cache.pop(shape, None)
+        self._mask_overlay_cache.pop(shape, None)
+        self.brush_modified = True
         self.update()
-        # # Update canvas
-        # x, y = int(image_pos.x()), int(image_pos.y())
-        # r = self.brush_radius + 2 
-        # self.update(x - r, y - r, 2*r, 2*r)
 
     def transform_pos(self, point):
         """Convert from widget-logical coordinates to painter-logical ones."""
@@ -1986,6 +2003,7 @@ class Canvas(
         # brush mode toggle
         if key == QtCore.Qt.Key_M:
             self.is_brush_mode = not self.is_brush_mode
+            print("set is_brush_mode", self.is_brush_mode)
             self.override_cursor(CURSOR_DRAW if self.is_brush_mode else CURSOR_DEFAULT)
             return
         

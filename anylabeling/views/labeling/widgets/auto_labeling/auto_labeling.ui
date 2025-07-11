@@ -64,6 +64,11 @@
       <widget class="QComboBox" name="output_select_combobox">
        <item>
         <property name="text">
+         <string>mask</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
          <string>polygon</string>
         </property>
        </item>
@@ -77,11 +82,7 @@
          <string>rotation</string>
         </property>
        </item>
-       <item>
-        <property name="text">
-         <string>mask</string>
-        </property>
-       </item>
+
       </widget>
      </item>
      <item>
