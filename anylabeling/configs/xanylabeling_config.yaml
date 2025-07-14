@@ -135,6 +135,7 @@ shortcuts:
   undo: Ctrl+Z
   undo_last_point: Ctrl+Z
   add_point_to_edge: Ctrl+Shift+P
+  edit_brush_mode: Shift+B
   edit_label: Ctrl+E
   edit_group_id: Alt+G
   edit_digit_shortcut: Alt+D

@@ -23,10 +23,15 @@ from PyQt5.QtWidgets import (
     QWidget,
     QMessageBox,
     QScrollArea,
+    QToolBar,
+    QAction,
+    QSpinBox,
 )
 
 from anylabeling.services.auto_labeling.types import AutoLabelingMode
 from anylabeling.services.auto_labeling import _THUMBNAIL_RENDER_MODELS
+from anylabeling.views.labeling.utils.brush_options_panel import BrushOptionsPanel
+
 
 from ...app_info import (
     __appname__,
@@ -513,6 +518,13 @@ class LabelingWidget(LabelDialog):
             "line-strip",
             self.tr("Start drawing linestrip. Ctrl+LeftClick ends creation."),
             enabled=False,
+        )
+        edit_brush_mode = action(
+            self.tr("Edit Brush Mode"),
+            self.toggle_edit_brush_mode,
+            shortcuts["edit_brush_mode"],
+            "brush",
+            self.tr("Edit brush mode"),
         )
         digit_shortcut_0 = action(
             self.tr("Digit Shortcut 0"),
@@ -1343,6 +1355,7 @@ class LabelingWidget(LabelDialog):
             remove_point=remove_point,
             create_mode=create_mode,
             edit_mode=edit_mode,
+            edit_brush_mode=edit_brush_mode,
             create_rectangle_mode=create_rectangle_mode,
             create_rotation_mode=create_rotation_mode,
             create_circle_mode=create_circle_mode,
@@ -1458,6 +1471,7 @@ class LabelingWidget(LabelDialog):
                 create_point_mode,
                 create_line_strip_mode,
                 edit_mode,
+                edit_brush_mode,
                 edit,
                 union_selection,
                 duplicate,
@@ -1488,6 +1502,7 @@ class LabelingWidget(LabelDialog):
                 digit_shortcut_8,
                 digit_shortcut_9,
                 edit_mode,
+                edit_brush_mode,
                 brightness_contrast,
                 loop_thru_labels,
             ),
@@ -1707,6 +1722,8 @@ class LabelingWidget(LabelDialog):
             open_vqa,
             toggle_auto_labeling_widget,
             run_all_images,
+            None,
+            self.actions.edit_brush_mode,
         )
 
         layout = QHBoxLayout()
@@ -1917,6 +1934,49 @@ class LabelingWidget(LabelDialog):
 
         self.set_text_editing(False)
 
+        self.init_brush_toolbar()
+
+        self.canvas.brush_mode_changed.connect(self.on_canvas_brush_mode_changed)
+
+        self.brush_options_panel = BrushOptionsPanel(self)
+        self.brush_options_panel.hide()
+
+        # 브러시 크기 변경 → canvas에 반영
+        self.brush_options_panel.slider.valueChanged.connect(
+            lambda v: self.canvas.set_brush_radius(v)
+        )
+
+        # 지우개 모드 토글 → canvas에 반영
+        self.brush_options_panel.eraser_btn.toggled.connect(
+            lambda checked: self.canvas.set_eraser_mode(checked)
+        )
+
+        self.actions.edit_brush_mode.toggled.connect(self.on_brush_button_clicked)
+
+    def init_brush_toolbar(self):
+        self.brush_toolbar = QToolBar("브러시 툴")
+        self.brush_toolbar.setVisible(False)  # 기본은 숨김
+
+        # 브러시 반지름 조절
+        self.brush_toolbar.addWidget(QLabel("반지름:"))
+        self.brush_radius_spin = QSpinBox()
+        self.brush_radius_spin.setRange(1, 100)
+        self.brush_radius_spin.setValue(10)
+        self.brush_radius_spin.valueChanged.connect(self.on_brush_radius_changed)
+        self.brush_toolbar.addWidget(self.brush_radius_spin)
+
+    def on_brush_mode_clicked(self, checked):
+        self.on_brush_toggle(checked) 
+        print(f"[DEBUG] on_brush_mode_clicked: {checked}")
+    def on_brush_toggle(self, checked):
+        # canvas에 브러시 모드 전달
+        self.canvas.set_brush_mode(checked)
+        self.brush_toolbar.setVisible(checked)  # 브러시 모드일 때만 툴바 표시
+
+    def on_brush_radius_changed(self, value):
+        if self.canvas.is_brush_mode:
+            self.canvas.brush_radius = value
+
     def set_language(self, language):
         if self._config["language"] == language:
             return
@@ -2016,6 +2076,7 @@ class LabelingWidget(LabelDialog):
             self.actions.digit_shortcut_8,
             self.actions.digit_shortcut_9,
             self.actions.edit_mode,
+            self.actions.edit_brush_mode,
         )
         utils.add_actions(self.menus.edit, actions + self.actions.editMenu)
 
@@ -2416,6 +2477,7 @@ class LabelingWidget(LabelDialog):
             self.actions.digit_shortcut_7.setEnabled(True)
             self.actions.digit_shortcut_8.setEnabled(True)
             self.actions.digit_shortcut_9.setEnabled(True)
+            self.actions.edit_brush_mode.setCheckable(True)
         else:
             self.actions.union_selection.setEnabled(False)
             if create_mode == "polygon":
@@ -4474,3 +4536,34 @@ class LabelingWidget(LabelDialog):
 
         except Exception as e:
             logger.error(f"Failed to load thumbnail image: {str(e)}")
+
+    def on_canvas_brush_mode_changed(self, enabled):
+        self.actions.edit_brush_mode.setChecked(enabled)
+        self.brush_toolbar.setVisible(enabled)
+
+    def toggle_edit_brush_mode(self, checked=None):
+        """
+        브러시 모드 토글 액션의 슬롯.
+        checked: QAction에서 자동으로 전달되는 체크 상태 (True/False)
+        """
+        if checked is None:
+            checked = True
+        self.on_brush_toggle(checked)
+
+    def on_brush_button_clicked(self, checked):
+        print(f"[DEBUG] on_brush_button_clicked: {checked}")
+        btn = self.tools.widgetForAction(self.actions.edit_brush_mode)
+        print(f"[DEBUG] btn: {btn}")
+        if checked:
+            # 브러시 버튼의 위치 계산
+            btn = self.tools.widgetForAction(self.actions.edit_brush_mode)
+            if btn:
+                pos = btn.mapToGlobal(btn.rect().topRight())
+                print(f"[DEBUG] pos: {pos}")
+                self.brush_options_panel.move(pos)
+            self.brush_options_panel.show()
+            self.brush_options_panel.raise_()
+            self.brush_options_panel.setFocus()
+        else:
+            self.brush_options_panel.hide()
+        self.on_brush_toggle(checked)  # 기존 브러시 모드 진입

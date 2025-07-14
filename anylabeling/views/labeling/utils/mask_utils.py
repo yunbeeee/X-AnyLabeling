@@ -203,28 +203,6 @@ def base64_to_mask(base64_string, shape, dtype=np.uint8):
     return mask
 
 
-def get_mask_bbox(mask):
-    """
-    Get bounding box of mask
-    
-    Args:
-        mask: numpy array (H, W) - binary mask
-    
-    Returns:
-        (x_min, y_min, x_max, y_max)
-    """
-    if mask is None or mask.sum() == 0:
-        return (0, 0, 0, 0)
-    
-    rows = np.any(mask, axis=1)
-    cols = np.any(mask, axis=0)
-    
-    y_min, y_max = np.where(rows)[0][[0, -1]]
-    x_min, x_max = np.where(cols)[0][[0, -1]]
-    
-    return (x_min, y_min, x_max, y_max)
-
-
 def resize_mask(mask, new_shape):
     """
     Resize mask to new shape

@@ -48,6 +48,7 @@ class Canvas(
     drawing_polygon = QtCore.pyqtSignal(bool)
     vertex_selected = QtCore.pyqtSignal(bool)
     auto_labeling_marks_updated = QtCore.pyqtSignal(list)
+    brush_mode_changed = QtCore.pyqtSignal(bool)  # 브러시 모드 on/off 알림
 
     CREATE, EDIT = 0, 1
 
@@ -2167,7 +2168,7 @@ class Canvas(
             elif key == QtCore.Qt.Key_V:
                 self.rotate_by_keyboard(-LARGE_ROTATION_INCREMENT)
             # brush mode toggle
-            elif key == QtCore.Qt.Key_M:
+            elif key == QtCore.Qt.Key_B:
                 self.set_brush_mode(not self.is_brush_mode)
                 print("[DEBUG] set is_brush_mode", self.is_brush_mode)
                 self.override_cursor(CURSOR_DRAW if self.is_brush_mode else CURSOR_DEFAULT)
@@ -2403,3 +2404,11 @@ class Canvas(
             self._brush_target_shape = None
             self._prev_brush_pos = None
         self.update()
+        self.brush_mode_changed.emit(enabled)  # 시그널 발생
+
+    def set_brush_radius(self, value):
+        self.brush_radius = value
+
+    def set_eraser_mode(self, enabled):
+        self.eraser_mode = enabled  # eraser_mode 플래그 추가
+        # 실제 브러시 동작에서 add/erase 분기 처리 필요
