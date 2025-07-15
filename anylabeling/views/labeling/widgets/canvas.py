@@ -148,6 +148,7 @@ class Canvas(
         self.brush_modified = False
         self._mask_qimage_cache = {}
         self._mask_overlay_cache = {}
+        self.eraser_mode = False  # ← 브러시/지우개 모드 상태 변수 초기화
 
     def set_loading(self, is_loading: bool, loading_text: str = None):
         """Set loading state"""
@@ -348,20 +349,8 @@ class Canvas(
         self.repaint()
 
         if self.is_brush_mode and bool(ev.buttons() & QtCore.Qt.LeftButton) and self.editing():
-            # target_shape = self.current if self.current else (self.selected_shapes[0] if self.selected_shapes else None)
-            # if target_shape is not None and hasattr(target_shape, "mask"):
-            #     mask = target_shape.mask
-            #     add = (ev.modifiers() != QtCore.Qt.ControlModifier)
-            #     mask = apply_brush_to_mask(mask, x, y, self.brush_radius, add=add)
-            #     if mask.sum() == 0:
-            #         self.delete_shape(target_shape)
-            #         return
-            #     target_shape.mask = mask
-            #     self._mask_overlay_cache.pop(target_shape, None)
-            #     self.update()
-            # return
             if self._brush_target_shape is not None:
-                add = (ev.modifiers() != QtCore.Qt.ControlModifier)
+                add = not self.eraser_mode
                 curr = image_pos
                 prev = getattr(self, '_prev_brush_pos', None)
                 if prev is not None:
@@ -376,7 +365,7 @@ class Canvas(
                     self.edit_mask_with_brush(self._brush_target_shape, curr, radius=self.brush_radius, add=add)
                 self._prev_brush_pos = curr
                 self.brush_modified = True
-            return # 브러시 모드일 때는 다른 동작 무시
+            # return # 브러시 모드일 때는 다른 동작 무시
         # Polygon drawing.
         if self.drawing():
             line_color = utils.hex_to_rgb(self.cross_line_color)
@@ -728,20 +717,12 @@ class Canvas(
                     self.update()
             elif self.editing():
                 if self.is_brush_mode:
-                    # # 1. 먼저 shape 선택 처리
-                    # self.select_shape_point(pos, multiple_selection_mode=False)
-                    # # 2. 선택된 마스크 shape를 타겟으로 저장
-                    # self._brush_target_shape = None
-                    # for shape in self.shapes:
-                    #     if shape.is_mask() and shape.selected:
-                    #         self._brush_target_shape = shape
-                    #         break
-                    #     # 브러시 모드에서는 shape 선택 불가, 현재 선택된 mask만 편집
                     if self.selected_shapes and self.selected_shapes[0].is_mask():
                         self._brush_target_shape = self.selected_shapes[0]
                     else:
                         self._brush_target_shape = None
                     self._prev_brush_pos = None  # 브러시 드래그 시작점 초기화
+
                 if self.selected_edge():
                     self.add_point_to_edge()
                 elif (
@@ -773,7 +754,7 @@ class Canvas(
                     for shape in self.shapes:
                         if shape.is_mask() and shape.selected:
                             # Edit mask with brush
-                            add = (ev.modifiers() != QtCore.Qt.ControlModifier)  # Ctrl for erasing
+                            add = not self.eraser_mode  # Ctrl for erasing
                             self.edit_mask_with_brush(shape, image_pos, radius=self.brush_radius, add=add)
                             self.brush_modified = True
                             break
@@ -1600,6 +1581,17 @@ class Canvas(
                 QtCore.QPointF(self.pixmap.width(), self.prev_move_point.y()),
             )
 
+        # 브러시 프리뷰 원
+        if self.is_brush_mode:
+            painter = self._painter  # 이미 begin(self) 되어 있음
+            r = self.brush_radius
+            # pen = QtGui.QPen(QtGui.QColor(0, 120, 255, 200), 2)
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor(255, 255, 255, 200))
+            # painter.setBrush(QtCore.Qt.NoBrush)
+            painter.drawEllipse(self.prev_move_point, r, r)
+
+        print("is_brush_mode:", self.is_brush_mode, "prev_move_point:", self.prev_move_point)
         p.end()
 
     # modified: 1506-1557
@@ -1614,30 +1606,6 @@ class Canvas(
         
         mask = (shape.mask.astype(np.uint8))
         height, width = mask.shape
-        # overlay = self._mask_overlay_cache.get(shape)
-        # if overlay is None:
-        #     overlay = QImage(width, height, QImage.Format_ARGB32)
-        #     overlay.fill(0)
-        #     from anylabeling.views.labeling.label_widget import LABEL_COLORMAP
-        #     label = getattr(shape, "label", None)
-        #     if label is not None and hasattr(self.parent, "_get_rgb_by_label"):
-        #         r, g, b = self.parent._get_rgb_by_label(label)
-        #     else:
-        #         # fallback: 초록색
-        #         r, g, b = 0, 255, 0
-        #     # 선택 시 흰색 오버레이, 아니면 label 색상
-        #     if shape.selected:
-        #         color = QColor(255, 255, 255, 100)
-        #     else:
-        #         color = QColor(r, g, b, 100)
-        #     # Direct pixel access for ARGB32
-        #     for y in range(height):
-        #         for x in range(width):
-        #             if mask[y, x]:
-        #                 overlay.setPixelColor(x, y, color)
-        #     self._mask_overlay_cache[shape] = overlay
-        # painter.drawImage(0, 0, overlay)
-        # 1. label 색상 얻기
         label = getattr(shape, "label", None)
         if label is not None and hasattr(self.parent, "_get_rgb_by_label"):
             r, g, b = self.parent._get_rgb_by_label(label)
@@ -1744,7 +1712,7 @@ class Canvas(
         before = shape.mask.copy()
 
         # 3) 실제 브러시 연산
-        new_mask = apply_brush_to_mask(before, pos.x(), pos.y(), radius, add=add)
+        new_mask = apply_brush_to_mask(before, pos.x(), pos.y(), radius=self.brush_radius, add=add)
 
         # 4) 마스크가 완전히 사라지면 도형 삭제
         if new_mask.sum() == 0:
@@ -2408,6 +2376,7 @@ class Canvas(
 
     def set_brush_radius(self, value):
         self.brush_radius = value
+        self.update()  # ← 슬라이더로 크기 바뀌면 즉시 프리뷰도 갱신
 
     def set_eraser_mode(self, enabled):
         self.eraser_mode = enabled  # eraser_mode 플래그 추가

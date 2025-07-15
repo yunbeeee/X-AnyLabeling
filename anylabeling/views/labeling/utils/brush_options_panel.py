@@ -1,37 +1,42 @@
-from PyQt5.QtWidgets import QWidget, QHBoxLayout, QSlider, QToolButton
-from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QToolButton, QSlider
+from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtGui import QIcon
+from PyQt5.QtSvg import QSvgRenderer
+
+from anylabeling.resources import resources
 
 class BrushOptionsPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowFlags(Qt.Popup)  # 팝업처럼 동작, 포커스 잃으면 hide
+        self.setStyleSheet("""
+            background: white;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+        """)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(8)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
 
-        # 브러시 크기 슬라이더
+        # self.slider = BrushSlider(Qt.Horizontal)
         self.slider = QSlider(Qt.Horizontal)
         self.slider.setMinimum(1)
-        self.slider.setMaximum(100)
-        self.slider.setValue(10)
-        self.slider.setToolTip("브러시 크기")
+        self.slider.setMaximum(10)
+        self.slider.setValue(5)
+        self.slider.setMinimumWidth(160)
+        self.slider.setMaximumWidth(240)
+        self.slider.setFixedHeight(40)
         layout.addWidget(self.slider)
 
-        # 지우개/브러시 토글 버튼
-        self.eraser_btn = QToolButton()
+        self.eraser_btn = QToolButton(self)
         self.eraser_btn.setCheckable(True)
-        self.eraser_btn.setIcon(QIcon(":/images/eraser.png"))  # 실제 경로로 수정
+        self.eraser_btn.setIcon(QIcon(":/images/images/eraser.svg"))
+        self.eraser_btn.setIconSize(QSize(24, 24))
+        self.eraser_btn.setFixedSize(40, 40)
         self.eraser_btn.setToolTip("지우개 모드")
         layout.addWidget(self.eraser_btn)
 
         self.setLayout(layout)
-
-    def showEvent(self, event):
-        super().showEvent(event)
-        self.activateWindow()
-        self.setFocus(Qt.PopupFocusReason)
-
-    def focusOutEvent(self, event):
-        self.hide()
-        super().focusOutEvent(event)
+        self.setMinimumWidth(260)
+        self.setMaximumWidth(400)
+        self.setMinimumHeight(72)
+        self.setMaximumHeight(72)

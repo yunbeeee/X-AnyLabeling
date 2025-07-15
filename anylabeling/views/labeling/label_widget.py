@@ -525,6 +525,7 @@ class LabelingWidget(LabelDialog):
             shortcuts["edit_brush_mode"],
             "brush",
             self.tr("Edit brush mode"),
+            checkable=True,
         )
         digit_shortcut_0 = action(
             self.tr("Digit Shortcut 0"),
@@ -1934,9 +1935,6 @@ class LabelingWidget(LabelDialog):
 
         self.set_text_editing(False)
 
-        self.init_brush_toolbar()
-
-        self.canvas.brush_mode_changed.connect(self.on_canvas_brush_mode_changed)
 
         self.brush_options_panel = BrushOptionsPanel(self)
         self.brush_options_panel.hide()
@@ -1950,32 +1948,9 @@ class LabelingWidget(LabelDialog):
         self.brush_options_panel.eraser_btn.toggled.connect(
             lambda checked: self.canvas.set_eraser_mode(checked)
         )
-
+        self.canvas.brush_mode_changed.connect(self.on_canvas_brush_mode_changed)
         self.actions.edit_brush_mode.toggled.connect(self.on_brush_button_clicked)
 
-    def init_brush_toolbar(self):
-        self.brush_toolbar = QToolBar("브러시 툴")
-        self.brush_toolbar.setVisible(False)  # 기본은 숨김
-
-        # 브러시 반지름 조절
-        self.brush_toolbar.addWidget(QLabel("반지름:"))
-        self.brush_radius_spin = QSpinBox()
-        self.brush_radius_spin.setRange(1, 100)
-        self.brush_radius_spin.setValue(10)
-        self.brush_radius_spin.valueChanged.connect(self.on_brush_radius_changed)
-        self.brush_toolbar.addWidget(self.brush_radius_spin)
-
-    def on_brush_mode_clicked(self, checked):
-        self.on_brush_toggle(checked) 
-        print(f"[DEBUG] on_brush_mode_clicked: {checked}")
-    def on_brush_toggle(self, checked):
-        # canvas에 브러시 모드 전달
-        self.canvas.set_brush_mode(checked)
-        self.brush_toolbar.setVisible(checked)  # 브러시 모드일 때만 툴바 표시
-
-    def on_brush_radius_changed(self, value):
-        if self.canvas.is_brush_mode:
-            self.canvas.brush_radius = value
 
     def set_language(self, language):
         if self._config["language"] == language:
@@ -2864,6 +2839,15 @@ class LabelingWidget(LabelDialog):
             )
         )
         self.set_text_editing(True)
+        # modified
+        # --- 브러시 버튼 활성화/비활성화 ---
+        self.actions.edit_brush_mode.setEnabled(n_selected > 0)
+        # 브러시 모드 해제 및 패널 숨김 (선택 해제 시)
+        if n_selected == 0:
+            self.actions.edit_brush_mode.setChecked(False)
+            self.brush_options_panel.hide()
+            self.canvas.set_brush_mode(False)
+        ######
         if self.attributes:
             # TODO: For future optimization(add parm to monitor selected_shape status)
             for i in range(len(self.canvas.shapes)):
@@ -4539,7 +4523,7 @@ class LabelingWidget(LabelDialog):
 
     def on_canvas_brush_mode_changed(self, enabled):
         self.actions.edit_brush_mode.setChecked(enabled)
-        self.brush_toolbar.setVisible(enabled)
+        self.brush_options_panel.setVisible(enabled)
 
     def toggle_edit_brush_mode(self, checked=None):
         """
@@ -4548,22 +4532,26 @@ class LabelingWidget(LabelDialog):
         """
         if checked is None:
             checked = True
-        self.on_brush_toggle(checked)
+        self.on_brush_button_clicked(checked) 
 
     def on_brush_button_clicked(self, checked):
-        print(f"[DEBUG] on_brush_button_clicked: {checked}")
-        btn = self.tools.widgetForAction(self.actions.edit_brush_mode)
-        print(f"[DEBUG] btn: {btn}")
+        # 브러시 버튼 토글 시 옵션 패널 표시/숨김 및 상태 동기화
         if checked:
-            # 브러시 버튼의 위치 계산
             btn = self.tools.widgetForAction(self.actions.edit_brush_mode)
             if btn:
-                pos = btn.mapToGlobal(btn.rect().topRight())
-                print(f"[DEBUG] pos: {pos}")
-                self.brush_options_panel.move(pos)
+                # pos = btn.mapToGlobal(btn.rect().topRight())
+                global_pos = btn.mapToGlobal(btn.rect().bottomLeft())
+                parent_pos = self.mapFromGlobal(global_pos)
+                self.brush_options_panel.move(parent_pos)
+                # self.brush_options_panel.move(pos)
             self.brush_options_panel.show()
             self.brush_options_panel.raise_()
             self.brush_options_panel.setFocus()
+            # 브러시 모드 진입
+            self.canvas.set_brush_mode(True, self.canvas.brush_radius)
+            # 옵션 패널 상태 동기화
+            self.brush_options_panel.slider.setValue(self.canvas.brush_radius)
+            self.brush_options_panel.eraser_btn.setChecked(getattr(self.canvas, 'eraser_mode', False))
         else:
             self.brush_options_panel.hide()
-        self.on_brush_toggle(checked)  # 기존 브러시 모드 진입
+            self.canvas.set_brush_mode(False)
