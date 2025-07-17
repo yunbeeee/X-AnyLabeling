@@ -1607,8 +1607,10 @@ class Canvas(
         mask = (shape.mask.astype(np.uint8))
         height, width = mask.shape
         label = getattr(shape, "label", None)
+        # print("[DEBUG] paint_mask label:", label)
         if label is not None and hasattr(self.parent, "_get_rgb_by_label"):
             r, g, b = self.parent._get_rgb_by_label(label)
+            # print("[DEBUG] paint_mask color:", r, g, b)
         else:
             r, g, b = 0, 255, 0
 
@@ -1626,14 +1628,14 @@ class Canvas(
 
         # 4. 선택된 경우 내부 색칠
         if shape.selected:
-            overlay = QImage(width, height, QImage.Format_ARGB32)
-            overlay.fill(0)
-            color = QColor(r, g, b, 100)
-            for y in range(height):
-                for x in range(width):
-                    if mask[y, x]:
-                        overlay.setPixelColor(x, y, color)
-            painter.drawImage(0, 0, overlay)
+            overlay = np.zeros((height, width, 4), dtype=np.uint8)
+            overlay[mask > 0] = [r, g, b, 100]
+            qimg = QImage(overlay.data, width, height, QImage.Format_RGBA8888)
+            bbox = shape.bounding_rect()
+            # bbox 좌표는 이미지 전체 기준, overlay는 (0,0) 기준
+            # overlay에서 bbox 영역만 잘라서, bbox 위치에 그리기
+            qimg_crop = qimg.copy(int(bbox.x()), int(bbox.y()), int(bbox.width()), int(bbox.height()))
+            painter.drawImage(int(bbox.x()), int(bbox.y()), qimg_crop)
 
             # 강조: 외곽선 두껍게, vertex/edge 등 추가 가능
             pen = QtGui.QPen(QColor(255, 255, 255), 2)
@@ -1642,6 +1644,7 @@ class Canvas(
                 points = [QPointF(float(x), float(y)) for [[x, y]] in contour]
                 if len(points) > 1:
                     painter.drawPolyline(QPolygonF(points))
+
 
     # def edit_mask_with_brush(self, shape, pos, radius=10, add=True):
     #     # 1. shape가 polygon/rectangle이면 mask로 변환
