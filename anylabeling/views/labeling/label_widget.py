@@ -4543,7 +4543,6 @@ class LabelingWidget(LabelDialog):
                 global_pos = btn.mapToGlobal(btn.rect().bottomLeft())
                 parent_pos = self.mapFromGlobal(global_pos)
                 self.brush_options_panel.move(parent_pos)
-                # self.brush_options_panel.move(pos)
             self.brush_options_panel.show()
             self.brush_options_panel.raise_()
             self.brush_options_panel.setFocus()

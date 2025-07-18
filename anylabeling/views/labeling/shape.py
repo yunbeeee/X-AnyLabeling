@@ -2,9 +2,18 @@ import copy
 import math
 
 from PyQt5 import QtCore, QtGui
+from PyQt5.QtCore import QPointF
+from PyQt5.QtGui import QImage, QColor, QPolygonF
 
 from . import utils
 from ..labeling.logger import logger
+
+try:
+    import cv2
+    import numpy as np
+except ImportError:
+    cv2 = None
+    np = None
 
 # TODO(unknown):
 # - [opt] Store paths instead of creating new ones at each paint.
@@ -335,6 +344,51 @@ class Shape:
                     else self.fill_color
                 )
                 painter.fillPath(line_path, color)
+
+    def paint_mask(self, painter, get_rgb_by_label_func=None):
+        """Paint mask shape"""
+        if not self.is_mask() or self.mask is None or cv2 is None or np is None:
+            return
+        
+        mask = (self.mask.astype(np.uint8))
+        height, width = mask.shape
+        label = getattr(self, "label", None)
+        
+        # Get RGB color for label
+        if label is not None and get_rgb_by_label_func:
+            r, g, b = get_rgb_by_label_func(label)
+        else:
+            r, g, b = 0, 255, 0
+
+        # Extract contours
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        pen = QtGui.QPen(QColor(r, g, b), 2)
+        painter.setPen(pen)
+        painter.setBrush(QtCore.Qt.NoBrush)
+
+        # Draw contours (non-selected)
+        for contour in contours:
+            points = [QPointF(float(x), float(y)) for [[x, y]] in contour]
+            if len(points) > 1:
+                painter.drawPolyline(QPolygonF(points))
+
+        # Fill interior if selected
+        if self.selected:
+            overlay = np.zeros((height, width, 4), dtype=np.uint8)
+            overlay[mask > 0] = [r, g, b, 100]
+            qimg = QImage(overlay.data, width, height, QImage.Format_RGBA8888)
+            bbox = self.bounding_rect()
+            # Crop overlay to bbox region and draw at bbox position
+            qimg_crop = qimg.copy(int(bbox.x()), int(bbox.y()), int(bbox.width()), int(bbox.height()))
+            painter.drawImage(int(bbox.x()), int(bbox.y()), qimg_crop)
+
+            # Highlight: thicker contour
+            pen = QtGui.QPen(QColor(255, 255, 255), 2)
+            painter.setPen(pen)
+            for contour in contours:
+                points = [QPointF(float(x), float(y)) for [[x, y]] in contour]
+                if len(points) > 1:
+                    painter.drawPolyline(QPolygonF(points))
 
     def draw_vertex(self, path, i, show_difficult=False):
         """Draw a vertex"""
