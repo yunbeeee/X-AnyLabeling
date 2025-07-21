@@ -1,7 +1,6 @@
 from PyQt5.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QToolButton, QSlider
 from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtGui import QIcon
-from PyQt5.QtSvg import QSvgRenderer
 
 from anylabeling.resources import resources
 
@@ -9,9 +8,51 @@ class BrushOptionsPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setStyleSheet("""
-            background: white;
-            border: 1px solid #ccc;
-            border-radius: 8px;
+            QWidget {
+                background: white;
+                border: 1px solid #ccc;
+                border-radius: 8px;
+            }
+            QSlider::groove:horizontal {
+                height: 4px;
+                background: #d2d2d7;
+                border-radius: 2px;
+            }
+            QSlider::handle:horizontal {
+                background: #0071e3;
+                border: none;
+                width: 16px;
+                height: 16px;
+                margin: -6px 0;
+                border-radius: 8px;
+            }
+            QSlider::sub-page:horizontal {
+                background: #0071e3;
+                border-radius: 2px;
+            }
+            QToolButton {
+                background: #f5f5f7;
+                border: 1px solid #d2d2d7;
+                border-radius: 6px;
+                padding: 8px;
+            }
+            QToolButton:hover {
+                background: #e5e5e7;
+                border-color: #0071e3;
+            }
+            QToolButton:pressed {
+                background: #d5d5d7;
+                border-color: #0071e3;
+            }
+            QToolButton:checked {
+                background: #0071e3;
+                border-color: #0071e3;
+                color: white;
+            }
+            QToolButton:checked:hover {
+                background: #005bbf;
+                border-color: #005bbf;
+            }
         """)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)

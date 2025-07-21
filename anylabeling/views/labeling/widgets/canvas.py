@@ -341,7 +341,6 @@ class Canvas(
         try:
             canvas_pos = ev.localPos()  # 또는 ev.pos()
             image_pos = self.transform_pos(canvas_pos)  # 반드시 이미지 좌표계로 변환!
-            # x, y = int(image_pos.x()), int(image_pos.y())
         except AttributeError:
             return
 
@@ -350,7 +349,8 @@ class Canvas(
 
         if self.is_brush_mode and bool(ev.buttons() & QtCore.Qt.LeftButton) and self.editing():
             if self._brush_target_shape is not None:
-                add = not self.eraser_mode
+                # Ctrl 키가 눌려있으면 지우기 모드, 아니면 그리기 모드
+                add = not bool(ev.modifiers() & QtCore.Qt.ControlModifier)
                 curr = image_pos
                 prev = getattr(self, '_prev_brush_pos', None)
                 if prev is not None:
@@ -631,8 +631,8 @@ class Canvas(
         """Mouse press event"""
         if self.is_loading:
             return
-        canvas_pos = ev.localPos()  # 또는 ev.pos()
-        image_pos = self.transform_pos(canvas_pos)  # 반드시 이미지 좌표계로 변환!
+        canvas_pos = ev.localPos() 
+        image_pos = self.transform_pos(canvas_pos) 
         x, y = int(image_pos.x()), int(image_pos.y())
 
         if ev.button() == QtCore.Qt.LeftButton:
@@ -723,6 +723,17 @@ class Canvas(
                     else:
                         self._brush_target_shape = None
                     self._prev_brush_pos = None  # 브러시 드래그 시작점 초기화
+
+                    # Find if we clicked on a mask shape
+                    for shape in self.shapes:
+                        if shape.is_mask() and shape.selected:
+                            # Edit mask with brush
+                            add = not bool(ev.modifiers() & QtCore.Qt.ControlModifier)  # Ctrl for erasing
+                            self.edit_mask_with_brush(shape, image_pos, radius=self.brush_radius, add=add)
+                            self.brush_modified = True
+                            break
+                    self.prev_pan_point = ev.localPos()
+                    self.repaint()
                     return
 
                 if self.selected_edge():
@@ -750,18 +761,6 @@ class Canvas(
                 )
                 self.prev_point = image_pos
                 # modified: 705-713
-                # Check if we're editing a mask shape
-                if self.is_brush_mode:
-                    # Find if we clicked on a mask shape
-                    for shape in self.shapes:
-                        if shape.is_mask() and shape.selected:
-                            # Edit mask with brush
-                            add = not self.eraser_mode  # Ctrl for erasing
-                            self.edit_mask_with_brush(shape, image_pos, radius=self.brush_radius, add=add)
-                            self.brush_modified = True
-                            break
-                self.prev_pan_point = ev.localPos()
-                self.repaint()
         elif ev.button() == QtCore.Qt.RightButton and self.editing():
             group_mode = int(ev.modifiers()) == QtCore.Qt.ControlModifier
             if not self.selected_shapes or (
@@ -774,7 +773,6 @@ class Canvas(
                 self.repaint()
             self.prev_point = image_pos
         
-        # super().mousePressEvent(ev)
 
     # QT Overload
     def mouseReleaseEvent(self, ev):

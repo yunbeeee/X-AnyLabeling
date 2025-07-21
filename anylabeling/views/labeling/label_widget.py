@@ -527,6 +527,7 @@ class LabelingWidget(LabelDialog):
             self.tr("Edit brush mode"),
             checkable=True,
         )
+
         digit_shortcut_0 = action(
             self.tr("Digit Shortcut 0"),
             lambda: self.create_digit_mode(0),
@@ -4554,3 +4555,4 @@ class LabelingWidget(LabelDialog):
         else:
             self.brush_options_panel.hide()
             self.canvas.set_brush_mode(False)
+
