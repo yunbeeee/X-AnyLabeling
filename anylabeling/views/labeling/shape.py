@@ -341,7 +341,7 @@ class Shape:
             r, g, b = 0, 255, 0
 
         # Extract contours
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours, _ = cv2.findContours(mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
         pen = QtGui.QPen(QColor(r, g, b), 2)
         painter.setPen(pen)
         painter.setBrush(QtCore.Qt.NoBrush)
@@ -350,6 +350,8 @@ class Shape:
         for contour in contours:
             points = [QPointF(float(x), float(y)) for [[x, y]] in contour]
             if len(points) > 1:
+                if points[0] != points[-1]:
+                    points.append(points[0])
                 painter.drawPolyline(QPolygonF(points))
 
         # Fill interior if selected
@@ -368,6 +370,8 @@ class Shape:
             for contour in contours:
                 points = [QPointF(float(x), float(y)) for [[x, y]] in contour]
                 if len(points) > 1:
+                    if points[0] != points[-1]:
+                        points.append(points[0])
                     painter.drawPolyline(QPolygonF(points))
 
     def draw_vertex(self, path, i, show_difficult=False):

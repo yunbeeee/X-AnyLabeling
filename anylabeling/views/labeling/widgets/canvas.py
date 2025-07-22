@@ -1646,7 +1646,14 @@ class Canvas(
 
         # 4) 마스크가 완전히 사라지면 도형 삭제
         if new_mask.sum() == 0:
+            # canvas에서 shape 제거
             self.delete_shape(shape)
+            # label_list에서도 제거
+            if hasattr(self.parent, 'remove_labels'):
+                self.parent.remove_labels([shape])
+            # 브러시 타겟 shape 정리
+            if self._brush_target_shape == shape:
+                self._brush_target_shape = None
             self.parent.status("브러시로 도형이 완전히 삭제되었습니다.")
             return
 
@@ -2356,7 +2363,7 @@ class Canvas(
 
             mask_count = 0
             
-            for shape in self.shapes:
+            for shape in self.shapes[:]:  # 복사본으로 순회하여 삭제 중 안전성 보장
                 # mask 타입이거나, polygon이지만 mask 속성을 가진 경우 모두 변환
                 if ((shape.shape_type == "mask" and hasattr(shape, "mask") and shape.mask is not None) or 
                     (shape.shape_type in ["polygon", "rectangle", "rotation"] and hasattr(shape, "mask") and shape.mask is not None)):
