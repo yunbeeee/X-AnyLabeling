@@ -139,18 +139,6 @@ class Shape:
         }
         if self.shape_type == "rotation":
             dictData["direction"] = self.direction
-        if self.shape_type == "mask" and self.mask is not None: # modified: 133-140
-            import base64
-            import numpy as np
-            # Encode mask as base64 string
-            mask_bytes = self.mask.tobytes()
-            dictData["mask"] = base64.b64encode(mask_bytes).decode('utf-8')
-            dictData["mask_shape"] = self.mask.shape
-            dictData["mask_dtype"] = str(self.mask.dtype)
-        dictData = {
-            **self.other_data,
-            **dictData,
-        }
         return dictData
 
     def load_from_dict(self, data: dict, close=True):
@@ -166,14 +154,6 @@ class Shape:
         self.kie_linking = data.get("kie_linking", [])
         if self.shape_type == "rotation":
             self.direction = data.get("direction", 0)
-        if self.shape_type == "mask" and "mask" in data: # modified: 160-167
-            import base64
-            import numpy as np
-            # Decode mask from base64 string
-            mask_bytes = base64.b64decode(data["mask"])
-            mask_shape = data["mask_shape"]
-            mask_dtype = data["mask_dtype"]
-            self.mask = np.frombuffer(mask_bytes, dtype=mask_dtype).reshape(mask_shape)
         self.other_data = {k: v for k, v in data.items() if k not in self.KEYS}
         if close:
             self.close()
@@ -541,16 +521,6 @@ class Shape:
     def __setitem__(self, key, value):
         self.points[key] = value
 
-    # modified: 475-486
     def is_mask(self):
         """Check if shape is a mask type"""
         return self.shape_type == "mask"
-
-    def get_mask(self):
-        """Get mask data"""
-        return self.mask if self.is_mask() else None
-
-    def set_mask(self, mask):
-        """Set mask data"""
-        if self.is_mask():
-            self.mask = mask

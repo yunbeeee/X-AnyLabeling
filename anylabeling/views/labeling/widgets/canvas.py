@@ -49,6 +49,7 @@ class Canvas(
     vertex_selected = QtCore.pyqtSignal(bool)
     auto_labeling_marks_updated = QtCore.pyqtSignal(list)
     brush_mode_changed = QtCore.pyqtSignal(bool)  # 브러시 모드 on/off 알림
+    eraser_mode_changed = QtCore.pyqtSignal(bool)  # 지우개 모드 on/off 알림
 
     CREATE, EDIT = 0, 1
 
@@ -350,22 +351,30 @@ class Canvas(
         if self.is_brush_mode and bool(ev.buttons() & QtCore.Qt.LeftButton) and self.editing():
             if self._brush_target_shape is not None:
                 # Ctrl 키가 눌려있으면 지우기 모드, 아니면 그리기 모드
-                add = not bool(ev.modifiers() & QtCore.Qt.ControlModifier)
+                # UI 버튼 상태와 Ctrl 키 상태를 모두 고려
+                ctrl_pressed = bool(ev.modifiers() & QtCore.Qt.ControlModifier)
+                add = not (self.eraser_mode or ctrl_pressed)
                 curr = image_pos
                 prev = getattr(self, '_prev_brush_pos', None)
+                
+                # 브러시 크기를 화면 좌표로 일정하게 유지 (스케일 무시)
+                image_brush_radius = max(1, int(self.brush_radius))
+                
                 if prev is not None:
                     dist = ((curr.x() - prev.x()) ** 2 + (curr.y() - prev.y()) ** 2) ** 0.5
-                    steps = max(1, int(dist // (self.brush_radius // 2)))
+                    # 0으로 나누기 방지
+                    step_size = max(1, image_brush_radius // 2)
+                    steps = max(1, int(dist // step_size))
                     for i in range(steps + 1):
                         t = i / steps
                         x = prev.x() * (1 - t) + curr.x() * t
                         y = prev.y() * (1 - t) + curr.y() * t
-                        self.edit_mask_with_brush(self._brush_target_shape, QtCore.QPointF(x, y), radius=self.brush_radius, add=add)
+                        self.edit_mask_with_brush(self._brush_target_shape, QtCore.QPointF(x, y), radius=image_brush_radius, add=add)
                 else:
-                    self.edit_mask_with_brush(self._brush_target_shape, curr, radius=self.brush_radius, add=add)
+                    self.edit_mask_with_brush(self._brush_target_shape, curr, radius=image_brush_radius, add=add)
                 self._prev_brush_pos = curr
                 self.brush_modified = True
-                return # 브러시 모드일 때는 다른 동작 무시
+            return # 브러시 모드일 때는 다른 동작 무시
         # Polygon drawing.
         if self.drawing():
             line_color = utils.hex_to_rgb(self.cross_line_color)
@@ -636,6 +645,7 @@ class Canvas(
         x, y = int(image_pos.x()), int(image_pos.y())
 
         if ev.button() == QtCore.Qt.LeftButton:
+
             if self.drawing():
                 if self.current:
                     # Add point to existing shape.
@@ -715,8 +725,11 @@ class Canvas(
                     self.set_hiding()
                     self.drawing_polygon.emit(True)
                     self.update()
-            elif self.editing():
+            elif self.editing():                    
                 if self.is_brush_mode:
+                    if self.out_off_pixmap(image_pos):
+                        self.set_brush_mode(False)
+                        return
                     # polygon, mask 모두 브러시 타겟이 될 수 있도록 수정
                     if self.selected_shapes and (self.selected_shapes[0].is_mask() or self.selected_shapes[0].shape_type in ["polygon", "rectangle", "rotation"]):
                         self._brush_target_shape = self.selected_shapes[0]
@@ -728,13 +741,19 @@ class Canvas(
                     for shape in self.shapes:
                         if shape.is_mask() and shape.selected:
                             # Edit mask with brush
-                            add = not bool(ev.modifiers() & QtCore.Qt.ControlModifier)  # Ctrl for erasing
-                            self.edit_mask_with_brush(shape, image_pos, radius=self.brush_radius, add=add)
+                            # UI 버튼 상태와 Ctrl 키 상태를 모두 고려
+                            ctrl_pressed = bool(ev.modifiers() & QtCore.Qt.ControlModifier)
+                            add = not (self.eraser_mode or ctrl_pressed)  # Ctrl for erasing
+                            
+                            # 브러시 크기를 화면 좌표로 일정하게 유지 (스케일 무시)
+                            image_brush_radius = max(1, int(self.brush_radius))
+                            print(f"[DEBUG] Brush scaling (click): screen_radius={self.brush_radius}, scale={self.scale}, image_radius={image_brush_radius} (fixed)")
+                            self.edit_mask_with_brush(shape, image_pos, radius=image_brush_radius, add=add)
                             self.brush_modified = True
                             break
                     self.prev_pan_point = ev.localPos()
                     self.repaint()
-                    return
+                    # return 제거 - 브러시 모드에서도 도형 선택 로직이 실행되도록 함
 
                 if self.selected_edge():
                     self.add_point_to_edge()
@@ -782,6 +801,11 @@ class Canvas(
 
         if self.brush_modified:
             self.store_shapes()
+            # 브러시 수정 완료 시 selection_changed 시그널 발생
+            if self.selected_shapes:
+                self.selection_changed.emit(self.selected_shapes)
+            # 브러시 편집 중에는 shape_moved.emit() 호출하지 않음
+            # (브러시 모드 OFF 시에만 호출됨)
             self.brush_modified = False
 
         # # 브러시 드래그 종료 시 타겟 초기화
@@ -892,7 +916,6 @@ class Canvas(
                     continue
                 if shape.is_mask():
                     if shape.contains_point(point):
-                        print(f"[DEBUG] select_shape_point: selected mask")
                         # 이하 기존 선택 로직 복사
                         self.set_hiding()
                         if shape not in self.selected_shapes:
@@ -906,7 +929,6 @@ class Canvas(
                         self.calculate_offsets(point)
                         return
                 elif len(shape.points) > 1 and shape.contains_point(point):
-                    print(f"[DEBUG] select_shape_point: selected shape_type={shape.shape_type}")
                     # 이하 기존 선택 로직
                     self.set_hiding()
                     if shape not in self.selected_shapes:
@@ -1587,10 +1609,9 @@ class Canvas(
             r = self.brush_radius
             painter.setPen(Qt.NoPen)
             painter.setBrush(QColor(255, 255, 255, 200))
-            # painter.setBrush(QtCore.Qt.NoBrush)
             painter.drawEllipse(self.prev_move_point, r, r)
 
-        print("is_brush_mode:", self.is_brush_mode, "prev_move_point:", self.prev_move_point)
+        # print("is_brush_mode:", self.is_brush_mode, "prev_move_point:", self.prev_move_point)
         p.end()
 
     def edit_mask_with_brush(self, shape, pos, radius, add=True):
@@ -1601,17 +1622,21 @@ class Canvas(
 
         # 1) polygon/rect/rotation 일 때도 한번만 mask로 변환
         if shape.shape_type != "mask":
+            # 원래 타입 저장 (이미 저장되어 있으면 유지)
+            if not hasattr(shape, '_original_shape_type'):
+                shape._original_shape_type = shape.shape_type
+            
             h, w = self.pixmap.height(), self.pixmap.width()
             shape.mask = polygon_to_mask(
                 [(int(p.x()), int(p.y())) for p in shape.points],
                 (h, w),
             )
             shape.shape_type = "mask"
-            print("shapes:", [(s.shape_type, s.label) for s in self.shapes])
-            print("selected_shapes:", [(s.shape_type, s.label) for s in self.selected_shapes])
-            print("selected_shapes_copy:", [(s.shape_type, s.label) for s in self.selected_shapes_copy])
-            print("current:", getattr(self.current, 'label', None), getattr(self.current, 'shape_type', None))
-            # (undo 스택에 남기고 싶으면 여기서 store_shapes)
+            # mask로 변환했으므로 points는 더 이상 사용하지 않음 (중복 그리기 방지)
+            shape.points = []
+
+            # polygon을 mask로 변환했으므로 shape 자체는 그대로 유지 (points는 더 이상 사용하지 않음)
+            # shape.shape_type만 "mask"로 변경하고 mask 속성만 추가
         
         # 2) before 복사
         before = shape.mask.copy()
@@ -1627,20 +1652,28 @@ class Canvas(
 
         # 5) 변경사항 있으면 반영
         if not np.array_equal(before, new_mask):
-            shape.mask = new_mask  # update mask
+            # 마스크 수정 시 메모리 재할당 최소화
+            if shape.mask is None or shape.mask.shape != new_mask.shape:
+                shape.mask = new_mask.copy()  # 새로운 할당
+            else:
+                shape.mask[:] = new_mask[:]   # 기존 메모리 재사용
             # 캐시 무효화
             self._mask_qimage_cache.pop(shape, None)
             self._mask_overlay_cache.pop(shape, None)
             # dirty flag
             if hasattr(self, "brush_modified"):
                 self.brush_modified = True
-            if self.parent and hasattr(self.parent, "set_dirty"):
-                self.parent.set_dirty()
-            # 화면 갱신
+            
+            # 선택 상태 명시적으로 유지 (한 번만)
+            if shape not in self.selected_shapes:
+                self.selected_shapes.append(shape)
+                # selection_changed는 드래그 중에는 emit하지 않음
+            
             self.update()
 
+
     def transform_pos(self, point):
-        """Convert from widget-logical coordinates to painter-logical ones."""
+        """Convert from widget-logical coordinates to painter-logical ones.""" 
         return point / self.scale - self.offset_to_center()
 
     def offset_to_center(self):
@@ -2041,7 +2074,7 @@ class Canvas(
             elif key == QtCore.Qt.Key_V:
                 self.rotate_by_keyboard(-LARGE_ROTATION_INCREMENT)
             # brush mode toggle
-            elif key == QtCore.Qt.Key_B:
+            elif key == QtCore.Qt.Key_M:
                 self.set_brush_mode(not self.is_brush_mode)
                 print("[DEBUG] set is_brush_mode", self.is_brush_mode)
                 self.override_cursor(CURSOR_DRAW if self.is_brush_mode else CURSOR_DEFAULT)
@@ -2120,6 +2153,18 @@ class Canvas(
         self.pixmap = pixmap
         if clear_shapes:
             self.shapes = []
+        # 이미지 크기에 따른 브러시 크기 자동 설정 (매번 초기화)
+        # 최적의 브러시 크기 계산
+        brush_radius, slider_value = self.calculate_optimal_brush_size(pixmap.width(), pixmap.height())
+        self.brush_radius = brush_radius
+        
+        # 슬라이더 값도 자동 설정 (무한 루프 방지)
+        if hasattr(self, 'parent') and hasattr(self.parent, 'brush_options_panel'):
+            slider = self.parent.brush_options_panel.slider
+            slider.blockSignals(True)
+            slider.setValue(slider_value)
+            slider.blockSignals(False)
+        
         self.update()
 
     def load_shapes(self, shapes, replace=True):
@@ -2245,9 +2290,34 @@ class Canvas(
         self.update()
 
     def set_brush_mode(self, enabled: bool, radius: int = 10):
+        # import traceback
+        # print(f"[DEBUG] set_brush_mode called: enabled={enabled}, radius={radius}")
+        # print(f"[DEBUG] Current is_brush_mode: {self.is_brush_mode}")
+        # print(f"[DEBUG] Stack trace:")
+        # traceback.print_stack()
+        # print(f"[DEBUG] ---")
+        
         self.is_brush_mode = enabled
-        self.brush_radius = radius
-        target_shape = self.selected_shapes[0] if self.selected_shapes else None
+        
+        # 브러시 모드를 켤 때는 현재 슬라이더 값을 사용
+        if enabled:
+            if hasattr(self, 'parent') and hasattr(self.parent, 'brush_options_panel'):
+                slider = self.parent.brush_options_panel.slider
+                self.brush_radius = slider.value() / 10.0
+                print(f"[DEBUG] Brush mode ON: using slider value {slider.value()} -> brush radius {self.brush_radius}")
+            else:
+                self.brush_radius = radius / 10.0
+        else:
+            # 브러시 모드를 끌 때는 현재 브러시 크기 유지
+            print(f"[DEBUG] Brush mode OFF: maintaining brush radius {self.brush_radius}")
+        # 브러시 모드 활성화 시 자동으로 editing 모드로 전환
+        if enabled:
+            self.set_editing(True)
+        # 브러시 모드 OFF일 때는 _brush_target_shape를 우선 사용
+        if not enabled and self._brush_target_shape is not None:
+            target_shape = self._brush_target_shape
+        else:
+            target_shape = self.selected_shapes[0] if self.selected_shapes else None
         if enabled:
             # polygon/rectangle/rotation → mask 변환
             if target_shape is not None and target_shape.shape_type in ["polygon", "rectangle", "rotation"]:
@@ -2258,10 +2328,20 @@ class Canvas(
                     shape_type="mask",
                     label=target_shape.label,
                     group_id=target_shape.group_id,
-                    points=[],
                     mask=mask
                 )
-                mask_shape._original_shape_type = target_shape.shape_type
+                # 원본 shape_type 저장 (이미 polygon인 경우 _original_shape_type 사용)
+                if hasattr(target_shape, '_original_shape_type'):
+                    mask_shape._original_shape_type = target_shape._original_shape_type
+                else:
+                    mask_shape._original_shape_type = target_shape.shape_type
+                # 색상 정보 복사
+                mask_shape.line_color = target_shape.line_color
+                mask_shape.fill_color = target_shape.fill_color
+                mask_shape.select_line_color = target_shape.select_line_color
+                mask_shape.select_fill_color = target_shape.select_fill_color
+                mask_shape.vertex_fill_color = target_shape.vertex_fill_color
+                mask_shape.hvertex_fill_color = target_shape.hvertex_fill_color
                 if target_shape in self.shapes:
                     self.shapes.remove(target_shape)
                 self.shapes.append(mask_shape)
@@ -2269,40 +2349,124 @@ class Canvas(
                 self._brush_target_shape = mask_shape
                 self.selection_changed.emit([mask_shape])  # selection_changed 시그널도 mask로 emit
                 self._prev_brush_pos = None
-        else:
-            # 브러시 모드 OFF: mask → polygon/rectangle/rotation 복원
-            if target_shape is not None and getattr(target_shape, "mask", None) is not None and hasattr(target_shape, "_original_shape_type"):
-                mask = target_shape.mask
-                if mask.sum() == 0:
-                    self.delete_shape(target_shape)
-                    self.selected_shapes = []
-                else:
+        else:            
+            # 모든 도형을 순회하면서 mask 타입인 것들을 원래 타입으로 변환
+            shapes_to_remove = []
+            shapes_to_add = []
+
+            mask_count = 0
+            
+            for shape in self.shapes:
+                # mask 타입이거나, polygon이지만 mask 속성을 가진 경우 모두 변환
+                if ((shape.shape_type == "mask" and hasattr(shape, "mask") and shape.mask is not None) or 
+                    (shape.shape_type in ["polygon", "rectangle", "rotation"] and hasattr(shape, "mask") and shape.mask is not None)):
+                    mask_count += 1
+                    # 원래 타입 결정
+                    if hasattr(shape, '_original_shape_type'):
+                        original_type = shape._original_shape_type
+                    else:
+                        # _original_shape_type이 없으면 기본적으로 polygon으로 변환
+                        original_type = "polygon"
+                    
+                    mask = shape.mask
+                    if mask.sum() == 0:
+                        # 빈 마스크는 삭제
+                        shapes_to_remove.append(shape)
+                        continue
+                    
                     from ..shape import Shape
-                    points = mask_to_polygon(mask, simplify=True, tolerance=0.01)
+                    points = mask_to_polygon(mask, simplify=False)
                     if points and len(points) >= 3:
                         poly_shape = Shape(
-                            shape_type=target_shape._original_shape_type,
-                            label=target_shape.label,
-                            group_id=target_shape.group_id,
-                            points=[QtCore.QPointF(x, y) for x, y in points]
+                            shape_type=original_type,
+                            label=shape.label,
+                            group_id=shape.group_id
                         )
-                        if target_shape in self.shapes:
-                            self.shapes.remove(target_shape)
-                        self.shapes.append(poly_shape)
-                        self.selected_shapes = [poly_shape]
+                        poly_shape.points = [QtCore.QPointF(x, y) for x, y in points]
+                        # 색상 정보 복사
+                        poly_shape.line_color = shape.line_color
+                        poly_shape.fill_color = shape.fill_color
+                        poly_shape.select_line_color = shape.select_line_color
+                        poly_shape.select_fill_color = shape.select_fill_color
+                        poly_shape.vertex_fill_color = shape.vertex_fill_color
+                        poly_shape.hvertex_fill_color = shape.hvertex_fill_color
+                        
+                        # rotation 타입인 경우 direction 정보도 복사
+                        if original_type == "rotation" and hasattr(shape, 'direction'):
+                            poly_shape.direction = shape.direction
+                        
+                        shapes_to_remove.append(shape)
+                        shapes_to_add.append(poly_shape)
+                        
+                        # 현재 선택된 도형이 변환되는 경우, 새로운 도형을 선택 상태로 유지
+                        if shape in self.selected_shapes:
+                            self.selected_shapes.remove(shape)
+                            self.selected_shapes.append(poly_shape)
                     else:
-                        self.delete_shape(target_shape)
-                        self.selected_shapes = []
-                # mask shape의 임시 속성 제거는 필요 없음(객체 자체가 삭제됨)
+                        # 유효하지 않은 polygon은 삭제
+                        shapes_to_remove.append(shape)
+            
+            # 변환 작업 실행
+            for shape in shapes_to_remove:
+                if shape in self.shapes:
+                    self.shapes.remove(shape)
+            
+            for shape in shapes_to_add:
+                self.shapes.append(shape)
+
+            
+            # 선택 상태 업데이트
+            if self.selected_shapes:
+                self.selection_changed.emit(self.selected_shapes)
+            
+            # label_list 동기화를 위해 시그널 발생 (실제 변환이 있을 때만)
+            if shapes_to_remove or shapes_to_add:
+                # label_list를 직접 업데이트 (store_shapes 호출 방지)
+                if self.parent and hasattr(self.parent, 'label_list'):
+                    self.parent.label_list.clear()
+                    for shape in self.shapes:
+                        self.parent.add_label(shape, update_last_label=False)
+            
+            # 모든 변환 작업이 완료된 후에 파일 저장 시그널 발생
+            if shapes_to_remove or shapes_to_add:
+                self.shape_moved.emit()
+            
             self._brush_target_shape = None
             self._prev_brush_pos = None
         self.update()
         self.brush_mode_changed.emit(enabled)  # 시그널 발생
+    
 
     def set_brush_radius(self, value):
         self.brush_radius = value
+        # 슬라이더 값도 동기화 (무한 루프 방지)
+        if hasattr(self, 'parent') and hasattr(self.parent, 'brush_options_panel'):
+            slider = self.parent.brush_options_panel.slider
+            # 슬라이더 값이 다를 때만 업데이트
+            if abs(slider.value() - value * 10) > 0.1:
+                slider.blockSignals(True)  # 시그널 차단
+                slider.setValue(int(value * 10))
+                slider.blockSignals(False)  # 시그널 복원
         self.update()  # ← 슬라이더로 크기 바뀌면 즉시 프리뷰도 갱신
 
     def set_eraser_mode(self, enabled):
         self.eraser_mode = enabled  # eraser_mode 플래그 추가
         # 실제 브러시 동작에서 add/erase 분기 처리 필요
+
+    def calculate_optimal_brush_size(self, image_width, image_height):
+        """이미지 크기에 따라 최적의 브러시 크기를 계산"""
+        # 기준: 1920x1080 화면에서 슬라이더 중앙값(30)이 적당하다고 가정
+        base_image_diagonal = (1920 ** 2 + 1080 ** 2) ** 0.5
+        
+        # 이미지 크기에 따른 스케일 팩터 계산
+        image_diagonal = (image_width ** 2 + image_height ** 2) ** 0.5
+        scale_factor = image_diagonal / base_image_diagonal
+        
+        # 슬라이더 중앙값(30)을 기준으로 이미지 크기에 맞게 조정
+        base_slider_value = 50  # 슬라이더 중앙값
+        adjusted_slider_value = max(10, min(100, base_slider_value * scale_factor))
+        
+        # 슬라이더 값을 브러시 크기로 변환 (슬라이더값 / 10)
+        brush_radius = adjusted_slider_value / 10.0
+        
+        return brush_radius, int(adjusted_slider_value)

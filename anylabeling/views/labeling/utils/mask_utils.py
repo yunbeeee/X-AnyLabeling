@@ -30,7 +30,6 @@ def apply_brush_to_mask(mask, center_x, center_y, radius, add=True):
         mask = np.logical_or(mask, brush)
     else:
         mask = np.logical_and(mask, ~brush)
-    # print(f"[DEBUG][apply_brush_to_mask] at ({center_x},{center_y}), add={add}, sum: {mask.sum()}")
     
     return mask.astype(np.uint8)
 
@@ -49,7 +48,6 @@ def mask_to_polygon(mask, simplify=True, tolerance=1.0):
     """
     if mask is None or mask.sum() == 0:
         return []
-    
     # Find contours
     contours, _ = cv2.findContours(
         mask.astype(np.uint8), 
@@ -87,76 +85,10 @@ def polygon_to_mask(points, shape):
     """
     if not points:
         return np.zeros(shape, dtype=np.uint8)
-    
     mask = np.zeros(shape, dtype=np.uint8)
     points_array = np.array(points, dtype=np.int32)
     
     cv2.fillPoly(mask, [points_array], (1,))
-    
-    return mask
-
-
-def mask_to_rle(mask):
-    """
-    Convert binary mask to RLE (Run-Length Encoding)
-    
-    Args:
-        mask: numpy array (H, W) - binary mask
-    
-    Returns:
-        RLE string
-    """
-    if mask is None:
-        return ""
-    
-    # Flatten mask
-    flat_mask = mask.flatten()
-    
-    # Find runs
-    runs = []
-    current_run = 1
-    current_val = flat_mask[0]
-    
-    for val in flat_mask[1:]:
-        if val == current_val:
-            current_run += 1
-        else:
-            runs.append(current_run)
-            current_run = 1
-            current_val = val
-    
-    runs.append(current_run)
-    
-    return " ".join(map(str, runs))
-
-
-def rle_to_mask(rle_string, shape):
-    """
-    Convert RLE string to binary mask
-    
-    Args:
-        rle_string: RLE encoded string
-        shape: (height, width) of output mask
-    
-    Returns:
-        binary mask as numpy array
-    """
-    if not rle_string:
-        return np.zeros(shape, dtype=np.uint8)
-    
-    runs = list(map(int, rle_string.split()))
-    
-    # Reconstruct mask
-    flat_mask = []
-    current_val = 0
-    
-    for run_length in runs:
-        flat_mask.extend([current_val] * run_length)
-        current_val = 1 - current_val  # Toggle between 0 and 1
-    
-    # Reshape to original shape
-    mask = np.array(flat_mask, dtype=np.uint8)
-    mask = mask.reshape(shape)
     
     return mask
 

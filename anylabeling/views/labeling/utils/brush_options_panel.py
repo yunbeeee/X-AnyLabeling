@@ -17,13 +17,15 @@ class BrushOptionsPanel(QWidget):
                 height: 4px;
                 background: #d2d2d7;
                 border-radius: 2px;
+                margin: 0 8px;
+                padding: 0 8px;
             }
             QSlider::handle:horizontal {
                 background: #0071e3;
                 border: none;
                 width: 16px;
                 height: 16px;
-                margin: -6px 0;
+                margin: -6px -20px;
                 border-radius: 8px;
             }
             QSlider::sub-page:horizontal {
@@ -58,14 +60,19 @@ class BrushOptionsPanel(QWidget):
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(12)
 
-        # self.slider = BrushSlider(Qt.Horizontal)
         self.slider = QSlider(Qt.Horizontal)
-        self.slider.setMinimum(1)
-        self.slider.setMaximum(10)
-        self.slider.setValue(5)
+        self.slider.setMinimum(10)  
+        self.slider.setMaximum(100)  # 최대값을 50에서 100으로 증가
+        self.slider.setValue(30)     # 중앙값도 30으로 조정    
         self.slider.setMinimumWidth(160)
         self.slider.setMaximumWidth(240)
         self.slider.setFixedHeight(40)
+        self.slider.setStyleSheet("""
+            QSlider {
+                padding-left: 8px;
+                padding-right: 8px;
+            }
+        """)
         layout.addWidget(self.slider)
 
         self.eraser_btn = QToolButton(self)
