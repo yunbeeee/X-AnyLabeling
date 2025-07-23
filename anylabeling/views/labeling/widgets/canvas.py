@@ -348,33 +348,6 @@ class Canvas(
         self.prev_move_point = image_pos
         self.repaint()
 
-        if self.is_brush_mode and bool(ev.buttons() & QtCore.Qt.LeftButton) and self.editing():
-            if self._brush_target_shape is not None:
-                # Ctrl 키가 눌려있으면 지우기 모드, 아니면 그리기 모드
-                # UI 버튼 상태와 Ctrl 키 상태를 모두 고려
-                ctrl_pressed = bool(ev.modifiers() & QtCore.Qt.ControlModifier)
-                add = not (self.eraser_mode or ctrl_pressed)
-                curr = image_pos
-                prev = getattr(self, '_prev_brush_pos', None)
-                
-                # 브러시 크기를 화면 좌표로 일정하게 유지 (스케일 무시)
-                image_brush_radius = max(1, int(self.brush_radius))
-                
-                if prev is not None:
-                    dist = ((curr.x() - prev.x()) ** 2 + (curr.y() - prev.y()) ** 2) ** 0.5
-                    # 0으로 나누기 방지
-                    step_size = max(1, image_brush_radius // 2)
-                    steps = max(1, int(dist // step_size))
-                    for i in range(steps + 1):
-                        t = i / steps
-                        x = prev.x() * (1 - t) + curr.x() * t
-                        y = prev.y() * (1 - t) + curr.y() * t
-                        self.edit_mask_with_brush(self._brush_target_shape, QtCore.QPointF(x, y), radius=image_brush_radius, add=add)
-                else:
-                    self.edit_mask_with_brush(self._brush_target_shape, curr, radius=image_brush_radius, add=add)
-                self._prev_brush_pos = curr
-                self.brush_modified = True
-            return # 브러시 모드일 때는 다른 동작 무시
         # Polygon drawing.
         if self.drawing():
             line_color = utils.hex_to_rgb(self.cross_line_color)
@@ -457,6 +430,32 @@ class Canvas(
 
         # Polygon/Vertex moving.
         if QtCore.Qt.LeftButton & ev.buttons():
+            if self.editing() and self.is_brush_mode and self._brush_target_shape is not None:
+                # Ctrl 키가 눌려있으면 지우기 모드, 아니면 그리기 모드
+                # UI 버튼 상태와 Ctrl 키 상태를 모두 고려
+                ctrl_pressed = bool(ev.modifiers() & QtCore.Qt.ControlModifier)
+                add = not (self.eraser_mode or ctrl_pressed)
+                curr = image_pos
+                prev = getattr(self, '_prev_brush_pos', None)
+                
+                # 브러시 크기를 화면 좌표로 일정하게 유지 (스케일 무시)
+                image_brush_radius = max(1, int(self.brush_radius))
+                
+                if prev is not None:
+                    dist = ((curr.x() - prev.x()) ** 2 + (curr.y() - prev.y()) ** 2) ** 0.5
+                    # 0으로 나누기 방지
+                    step_size = max(1, image_brush_radius // 2)
+                    steps = max(1, int(dist // step_size))
+                    for i in range(steps + 1):
+                        t = i / steps
+                        x = prev.x() * (1 - t) + curr.x() * t
+                        y = prev.y() * (1 - t) + curr.y() * t
+                        self.edit_mask_with_brush(self._brush_target_shape, QtCore.QPointF(x, y), radius=image_brush_radius, add=add)
+                else:
+                    self.edit_mask_with_brush(self._brush_target_shape, curr, radius=image_brush_radius, add=add)
+                self._prev_brush_pos = curr
+                self.brush_modified = True
+                return
             if self.selected_vertex():
                 self.is_move_editing = False
                 try:
@@ -502,7 +501,6 @@ class Canvas(
                     )
                     self.repaint()
             return
-
 
         if self.editing() and self.is_move_editing:
             self.override_cursor(CURSOR_MOVE)
@@ -779,7 +777,7 @@ class Canvas(
                     image_pos, multiple_selection_mode=group_mode
                 )
                 self.prev_point = image_pos
-                # modified: 705-713
+
         elif ev.button() == QtCore.Qt.RightButton and self.editing():
             group_mode = int(ev.modifiers()) == QtCore.Qt.ControlModifier
             if not self.selected_shapes or (
@@ -807,10 +805,6 @@ class Canvas(
             # 브러시 편집 중에는 shape_moved.emit() 호출하지 않음
             # (브러시 모드 OFF 시에만 호출됨)
             self.brush_modified = False
-
-        # # 브러시 드래그 종료 시 타겟 초기화
-        # if self.is_brush_mode and ev.button() == QtCore.Qt.LeftButton:
-        #     self._brush_target_shape = None
 
         if ev.button() == QtCore.Qt.RightButton:
             menu = self.menus[len(self.selected_shapes_copy) > 0]
