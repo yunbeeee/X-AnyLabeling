@@ -354,17 +354,15 @@ class Shape:
                     points.append(points[0])
                 painter.drawPolyline(QPolygonF(points))
 
-        # Fill interior if selected
-        if self.selected:
-            overlay = np.zeros((height, width, 4), dtype=np.uint8)
-            overlay[mask > 0] = [r, g, b, 100]
-            qimg = QImage(overlay.data, width, height, QImage.Format_RGBA8888)
-            bbox = self.bounding_rect()
-            # Crop overlay to bbox region and draw at bbox position
-            qimg_crop = qimg.copy(int(bbox.x()), int(bbox.y()), int(bbox.width()), int(bbox.height()))
-            painter.drawImage(int(bbox.x()), int(bbox.y()), qimg_crop)
+        # Fill interior (always show for mask shapes to support brush editing)
+        overlay = np.zeros((height, width, 4), dtype=np.uint8)
+        overlay[mask > 0] = [r, g, b, 100]
+        qimg = QImage(overlay.data, width, height, QImage.Format_RGBA8888)
+        # Draw the full overlay directly (no cropping to avoid boundary issues)
+        painter.drawImage(0, 0, qimg)
 
-            # Highlight: thicker contour
+        # Highlight: thicker contour (only when selected)
+        if self.selected:
             pen = QtGui.QPen(QColor(255, 255, 255), 2)
             painter.setPen(pen)
             for contour in contours:

@@ -69,6 +69,10 @@ def mask_to_polygon(mask, simplify=True, tolerance=1.0):
     # Convert to list of points
     points = [(point[0][0], point[0][1]) for point in largest_contour]
     
+    # 닫힌 polygon을 위해 첫 번째 점을 마지막에 추가 (첫 점과 마지막 점이 다를 때만)
+    if len(points) > 2 and points[0] != points[-1]:
+        points.append(points[0])
+    
     return points
 
 
