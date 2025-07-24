@@ -150,6 +150,12 @@ class Canvas(
         self._mask_qimage_cache = {}
         self._mask_overlay_cache = {}
         self.eraser_mode = False  # ← 브러시/지우개 모드 상태 변수 초기화
+        
+        # 성능 최적화 변수들
+        self._brush_update_timer = QtCore.QTimer()
+        self._brush_update_timer.setSingleShot(True)
+        self._brush_update_timer.timeout.connect(self._delayed_brush_update)
+        self._brush_stroke_batch = []  # 배치 처리용
 
     def set_loading(self, is_loading: bool, loading_text: str = None):
         """Set loading state"""
@@ -441,18 +447,27 @@ class Canvas(
                 # 브러시 크기를 화면 좌표로 일정하게 유지 (스케일 무시)
                 image_brush_radius = max(1, int(self.brush_radius))
                 
+                # 성능 최적화: 브러시 스트로크 배치 처리
                 if prev is not None:
                     dist = ((curr.x() - prev.x()) ** 2 + (curr.y() - prev.y()) ** 2) ** 0.5
-                    # 0으로 나누기 방지
-                    step_size = max(1, image_brush_radius // 2)
-                    steps = max(1, int(dist // step_size))
-                    for i in range(steps + 1):
-                        t = i / steps
-                        x = prev.x() * (1 - t) + curr.x() * t
-                        y = prev.y() * (1 - t) + curr.y() * t
-                        self.edit_mask_with_brush(self._brush_target_shape, QtCore.QPointF(x, y), radius=image_brush_radius, add=add)
+                    # 거리가 작으면 중간점 보간 생략 (성능 향상)
+                    if dist > image_brush_radius * 0.5:
+                        step_size = max(2, image_brush_radius // 3)  # 스텝 크기 증가로 호출 횟수 감소
+                        steps = max(1, int(dist // step_size))
+                        for i in range(steps + 1):
+                            t = i / steps
+                            x = prev.x() * (1 - t) + curr.x() * t
+                            y = prev.y() * (1 - t) + curr.y() * t
+                            self.edit_mask_with_brush(self._brush_target_shape, QtCore.QPointF(x, y), radius=image_brush_radius, add=add)
+                    else:
+                        # 거리가 짧으면 현재 점만 처리
+                        self.edit_mask_with_brush(self._brush_target_shape, curr, radius=image_brush_radius, add=add)
                 else:
                     self.edit_mask_with_brush(self._brush_target_shape, curr, radius=image_brush_radius, add=add)
+                
+                # 지연 업데이트로 렌더링 최적화
+                self._brush_update_timer.stop()
+                self._brush_update_timer.start(8)  # 8ms 지연 (약 120fps)
                 self._prev_brush_pos = curr
                 self.brush_modified = True
                 return
@@ -728,30 +743,58 @@ class Canvas(
                     if self.out_off_pixmap(image_pos):
                         self.set_brush_mode(False)
                         return
-                    # polygon, mask 모두 브러시 타겟이 될 수 있도록 수정
-                    if self.selected_shapes and (self.selected_shapes[0].is_mask() or self.selected_shapes[0].shape_type in ["polygon", "rectangle", "rotation"]):
-                        self._brush_target_shape = self.selected_shapes[0]
-                    else:
-                        self._brush_target_shape = None
+                    
+                    # 브러시 타겟 설정
+                    brush_target = None
+                    
+                    # 1. 기존 타겟이 유효하고 클릭 위치에 있으면 계속 사용 (연속성 보장)
+                    if (hasattr(self, '_brush_target_shape') and 
+                        self._brush_target_shape is not None and 
+                        self._brush_target_shape in self.shapes and 
+                        self.is_visible(self._brush_target_shape) and
+                        self._brush_target_shape.contains_point(image_pos)):
+                        brush_target = self._brush_target_shape
+                    
+                    # 2. 기존 타겟이 유효하지 않으면 선택된 도형 우선 확인 (사용자 의도 반영)
+                    elif self.selected_shapes:
+                        first_selected = self.selected_shapes[0]
+                        if (first_selected.is_mask() or first_selected.shape_type in ["polygon", "rectangle", "rotation"]) and first_selected.contains_point(image_pos):
+                            brush_target = first_selected
+                    
+                    # 3. 그래도 없으면 클릭한 위치의 브러시 가능한 도형 찾기
+                    if brush_target is None:
+                        for shape in reversed(self.shapes):
+                            if not self.is_visible(shape):
+                                continue
+                            if (shape.is_mask() or shape.shape_type in ["polygon", "rectangle", "rotation"]) and shape.contains_point(image_pos):
+                                brush_target = shape
+                                break
+                    
+                    # 4. 브러시 타겟 설정 및 선택 상태 동기화
+                    if brush_target != getattr(self, '_brush_target_shape', None):
+                        self._brush_target_shape = brush_target
+                        # 타겟이 변경되면 선택 상태도 동기화
+                        if self._brush_target_shape is not None and self._brush_target_shape not in self.selected_shapes:
+                            self.selected_shapes = [self._brush_target_shape]
+                            self.selection_changed.emit(self.selected_shapes)
+                    
                     self._prev_brush_pos = None  # 브러시 드래그 시작점 초기화
 
-                    # Find if we clicked on a mask shape
-                    for shape in self.shapes:
-                        if shape.is_mask() and shape.selected:
-                            # Edit mask with brush
-                            # UI 버튼 상태와 Ctrl 키 상태를 모두 고려
-                            ctrl_pressed = bool(ev.modifiers() & QtCore.Qt.ControlModifier)
-                            add = not (self.eraser_mode or ctrl_pressed)  # Ctrl for erasing
-                            
-                            # 브러시 크기를 화면 좌표로 일정하게 유지 (스케일 무시)
-                            image_brush_radius = max(1, int(self.brush_radius))
-                            print(f"[DEBUG] Brush scaling (click): screen_radius={self.brush_radius}, scale={self.scale}, image_radius={image_brush_radius} (fixed)")
-                            self.edit_mask_with_brush(shape, image_pos, radius=image_brush_radius, add=add)
-                            self.brush_modified = True
-                            break
-                    self.prev_pan_point = ev.localPos()
-                    self.repaint()
-                    # return 제거 - 브러시 모드에서도 도형 선택 로직이 실행되도록 함
+                    # 브러시 타겟이 있으면 즉시 브러시 적용
+                    if self._brush_target_shape is not None:
+                        # UI 버튼 상태와 Ctrl 키 상태를 모두 고려
+                        ctrl_pressed = bool(ev.modifiers() & QtCore.Qt.ControlModifier)
+                        add = not (self.eraser_mode or ctrl_pressed)  # Ctrl for erasing
+                        
+                        # 브러시 크기를 화면 좌표로 일정하게 유지 (스케일 무시)
+                        image_brush_radius = max(1, int(self.brush_radius))
+                        self.edit_mask_with_brush(self._brush_target_shape, image_pos, radius=image_brush_radius, add=add)
+                        self.brush_modified = True
+                        
+                        # 브러시 모드에서는 도형 선택 로직을 건너뛰고 바로 return
+                        self.prev_pan_point = ev.localPos()
+                        self.repaint()
+                        return
 
                 if self.selected_edge():
                     self.add_point_to_edge()
@@ -798,6 +841,10 @@ class Canvas(
             return
 
         if self.brush_modified:
+            # 브러시 타이머 정리 및 최종 업데이트
+            self._brush_update_timer.stop()
+            self.update()  # 최종 고품질 렌더링
+            
             self.store_shapes()
             # 브러시 수정 완료 시 selection_changed 시그널 발생
             if self.selected_shapes:
@@ -1574,7 +1621,7 @@ class Canvas(
 
             pen = QtGui.QPen(QtGui.QColor("#000000"), 8, Qt.SolidLine)
             p.setPen(pen)
-            for _, _, text_pos, label_text in labels:
+            for shape, _, text_pos, label_text in labels:
                 if not shape.visible:
                     continue
                 p.drawText(text_pos, label_text)
@@ -1632,14 +1679,15 @@ class Canvas(
             # polygon을 mask로 변환했으므로 shape 자체는 그대로 유지 (points는 더 이상 사용하지 않음)
             # shape.shape_type만 "mask"로 변경하고 mask 속성만 추가
         
-        # 2) before 복사
-        before = shape.mask.copy()
-
-        # 3) 실제 브러시 연산
-        new_mask = apply_brush_to_mask(before, pos.x(), pos.y(), radius=self.brush_radius, add=add)
-
+        # 2) 성능 최적화: 직접 마스크 수정 (복사 없이)
+        old_sum = shape.mask.sum()  # 변경 감지용
+        
+        # 3) 실제 브러시 연산 (기존 마스크에 직접 적용)
+        shape.mask = apply_brush_to_mask(shape.mask, pos.x(), pos.y(), radius=self.brush_radius, add=add)
+        
         # 4) 마스크가 완전히 사라지면 도형 삭제
-        if new_mask.sum() == 0:
+        new_sum = shape.mask.sum()
+        if new_sum == 0:
             # canvas에서 shape 제거
             self.delete_shape(shape)
             # label_list에서도 제거
@@ -1651,27 +1699,45 @@ class Canvas(
             self.parent.status("브러시로 도형이 완전히 삭제되었습니다.")
             return
 
-        # 5) 변경사항 있으면 반영
-        if not np.array_equal(before, new_mask):
-            # 마스크 수정 시 메모리 재할당 최소화
-            if shape.mask is None or shape.mask.shape != new_mask.shape:
-                shape.mask = new_mask.copy()  # 새로운 할당
-            else:
-                shape.mask[:] = new_mask[:]   # 기존 메모리 재사용
-            # 캐시 무효화
+        # 5) 변경사항이 있으면 반영 (픽셀 합계 비교로 빠른 체크)
+        if old_sum != new_sum:
+            # 캐시 무효화 (렌더링 성능을 위해 유지)
             self._mask_qimage_cache.pop(shape, None)
             self._mask_overlay_cache.pop(shape, None)
             # dirty flag
-            if hasattr(self, "brush_modified"):
-                self.brush_modified = True
+            self.brush_modified = True
             
             # 선택 상태 명시적으로 유지 (한 번만)
             if shape not in self.selected_shapes:
                 self.selected_shapes.append(shape)
                 # selection_changed는 드래그 중에는 emit하지 않음
             
+            # 성능 최적화: 지연 업데이트
             self.update()
 
+    def _delayed_brush_update(self):
+        """브러시 업데이트 최적화: 지연된 업데이트"""
+        # 항상 업데이트 (라벨 표시 등을 위해)
+        self.update()
+
+    def _batch_process_brush_stroke(self, stroke_points):
+        """브러시 스트로크 배치 처리로 성능 최적화"""
+        if not stroke_points or not self._brush_target_shape:
+            return
+            
+        # 한 번에 여러 포인트 처리
+        shape = self._brush_target_shape
+        for pos, add in stroke_points:
+            # 직접 마스크 수정 (중간 체크 없이)
+            shape.mask = apply_brush_to_mask(
+                shape.mask, pos.x(), pos.y(), 
+                radius=self.brush_radius, add=add
+            )
+        
+        # 배치 처리 후 한 번만 캐시 무효화
+        self._mask_qimage_cache.pop(shape, None)
+        self._mask_overlay_cache.pop(shape, None)
+        self.brush_modified = True
 
     def transform_pos(self, point):
         """Convert from widget-logical coordinates to painter-logical ones.""" 
@@ -2078,7 +2144,6 @@ class Canvas(
             elif key == QtCore.Qt.Key_M:
                 self.set_brush_mode(not self.is_brush_mode)
                 print("[DEBUG] set is_brush_mode", self.is_brush_mode)
-                self.override_cursor(CURSOR_DRAW if self.is_brush_mode else CURSOR_DEFAULT)
                 return
 
     # QT Overload
@@ -2302,6 +2367,8 @@ class Canvas(
         
         # 브러시 모드를 켤 때는 현재 슬라이더 값을 사용
         if enabled:
+            self.set_editing(True)
+            self.override_cursor(QtCore.Qt.BlankCursor)  # 마우스 커서 숨김
             if hasattr(self, 'parent') and hasattr(self.parent, 'brush_options_panel'):
                 slider = self.parent.brush_options_panel.slider
                 self.brush_radius = slider.value() / 10.0
@@ -2309,11 +2376,10 @@ class Canvas(
             else:
                 self.brush_radius = radius / 10.0
         else:
+            self.override_cursor(CURSOR_DEFAULT)  
             # 브러시 모드를 끌 때는 현재 브러시 크기 유지
             print(f"[DEBUG] Brush mode OFF: maintaining brush radius {self.brush_radius}")
-        # 브러시 모드 활성화 시 자동으로 editing 모드로 전환
-        if enabled:
-            self.set_editing(True)
+
         # 브러시 모드 OFF일 때는 _brush_target_shape를 우선 사용
         if not enabled and self._brush_target_shape is not None:
             target_shape = self._brush_target_shape
@@ -2384,6 +2450,10 @@ class Canvas(
                             group_id=shape.group_id
                         )
                         poly_shape.points = [QtCore.QPointF(x, y) for x, y in points]
+                        
+                        # polygon을 닫힌 상태로 만들기
+                        poly_shape.close()
+                        
                         # 색상 정보 복사
                         poly_shape.line_color = shape.line_color
                         poly_shape.fill_color = shape.fill_color
@@ -2411,11 +2481,9 @@ class Canvas(
             for shape in shapes_to_remove:
                 if shape in self.shapes:
                     self.shapes.remove(shape)
-            
             for shape in shapes_to_add:
                 self.shapes.append(shape)
 
-            
             # 선택 상태 업데이트
             if self.selected_shapes:
                 self.selection_changed.emit(self.selected_shapes)
@@ -2434,6 +2502,7 @@ class Canvas(
             
             self._brush_target_shape = None
             self._prev_brush_pos = None
+        
         self.update()
         self.brush_mode_changed.emit(enabled)  # 시그널 발생
     
