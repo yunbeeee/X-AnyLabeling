@@ -439,8 +439,8 @@ class Canvas(
             if self.editing() and self.is_brush_mode and self._brush_target_shape is not None:
                 # Ctrl 키가 눌려있으면 지우기 모드, 아니면 그리기 모드
                 # UI 버튼 상태와 Ctrl 키 상태를 모두 고려
-                ctrl_pressed = bool(ev.modifiers() & QtCore.Qt.ControlModifier)
-                add = not (self.eraser_mode or ctrl_pressed)
+                shift_pressed = bool(ev.modifiers() & QtCore.Qt.ShiftModifier)
+                add = not (self.eraser_mode or shift_pressed)
                 curr = image_pos
                 prev = getattr(self, '_prev_brush_pos', None)
                 
@@ -2143,7 +2143,6 @@ class Canvas(
             # brush mode toggle
             elif key == QtCore.Qt.Key_M:
                 self.set_brush_mode(not self.is_brush_mode)
-                print("[DEBUG] set is_brush_mode", self.is_brush_mode)
                 return
 
     # QT Overload
@@ -2355,14 +2354,7 @@ class Canvas(
 
         self.update()
 
-    def set_brush_mode(self, enabled: bool, radius: int = 10):
-        # import traceback
-        # print(f"[DEBUG] set_brush_mode called: enabled={enabled}, radius={radius}")
-        # print(f"[DEBUG] Current is_brush_mode: {self.is_brush_mode}")
-        # print(f"[DEBUG] Stack trace:")
-        # traceback.print_stack()
-        # print(f"[DEBUG] ---")
-        
+    def set_brush_mode(self, enabled: bool, radius: int = 10):        
         self.is_brush_mode = enabled
         
         # 브러시 모드를 켤 때는 현재 슬라이더 값을 사용
@@ -2372,13 +2364,10 @@ class Canvas(
             if hasattr(self, 'parent') and hasattr(self.parent, 'brush_options_panel'):
                 slider = self.parent.brush_options_panel.slider
                 self.brush_radius = slider.value() / 10.0
-                print(f"[DEBUG] Brush mode ON: using slider value {slider.value()} -> brush radius {self.brush_radius}")
             else:
                 self.brush_radius = radius / 10.0
         else:
             self.override_cursor(CURSOR_DEFAULT)  
-            # 브러시 모드를 끌 때는 현재 브러시 크기 유지
-            print(f"[DEBUG] Brush mode OFF: maintaining brush radius {self.brush_radius}")
 
         # 브러시 모드 OFF일 때는 _brush_target_shape를 우선 사용
         if not enabled and self._brush_target_shape is not None:
