@@ -446,8 +446,8 @@ class Canvas(
                 curr = image_pos
                 prev = getattr(self, '_prev_brush_pos', None)
                 
-                # 브러시 크기를 화면 좌표로 일정하게 유지 (스케일 무시)
-                image_brush_radius = max(1, int(self.brush_radius))
+                # 브러시 크기를 화면 좌표로 일정하게 유지 (줌 레벨 적용)
+                image_brush_radius = max(1, int(self.brush_radius / self.scale))
                 
                 # 성능 최적화: 브러시 스트로크 배치 처리
                 if prev is not None:
@@ -498,24 +498,25 @@ class Canvas(
                     shape_height = int(abs(p2.y() - p1.y()))
                     self.show_shape.emit(shape_width, shape_height, image_pos)
             else:
-                if (
-                    self.pixmap
-                    and self.pixmap.width()
-                    and self.pixmap.height()
-                ):
-                    self.override_cursor(CURSOR_MOVE)
-                    delta = image_pos - self.prev_pan_point
-                    self.scroll_request.emit(
-                        delta.x() / (self.pixmap.width() * self.scale),
-                        Qt.Horizontal,
-                        1,
-                    )
-                    self.scroll_request.emit(
-                        delta.y() / (self.pixmap.height() * self.scale),
-                        Qt.Vertical,
-                        1,
-                    )
-                    self.repaint()
+                # 이미지 팬 기능 비활성화 (의도치 않은 이미지 이동 방지)
+                # if (
+                #     self.pixmap
+                #     and self.pixmap.width()
+                #     and self.pixmap.height()
+                # ):
+                #     self.override_cursor(CURSOR_MOVE)
+                #     delta = image_pos - self.prev_pan_point
+                #     self.scroll_request.emit(
+                #         delta.x() / (self.pixmap.width() * self.scale),
+                #         Qt.Horizontal,
+                #         1,
+                #     )
+                #     self.scroll_request.emit(
+                #         delta.y() / (self.pixmap.height() * self.scale),
+                #         Qt.Vertical,
+                #     )
+                #     self.repaint()
+                pass
             return
 
         if self.editing() and self.is_move_editing:
@@ -795,8 +796,8 @@ class Canvas(
                         ctrl_pressed = bool(ev.modifiers() & QtCore.Qt.ControlModifier)
                         add = not (self.eraser_mode or ctrl_pressed)  # Ctrl for erasing
                         
-                        # 브러시 크기를 화면 좌표로 일정하게 유지 (스케일 무시)
-                        image_brush_radius = max(1, int(self.brush_radius))
+                        # 브러시 크기를 화면 좌표로 일정하게 유지 (줌 레벨 적용)
+                        image_brush_radius = max(1, int(self.brush_radius / self.scale))
                         self.edit_mask_with_brush(self._brush_target_shape, image_pos, radius=image_brush_radius, add=add)
                         self.brush_modified = True
                         
@@ -1652,10 +1653,11 @@ class Canvas(
                 QtCore.QPointF(self.pixmap.width(), self.prev_move_point.y()),
             )
 
-        # 브러시 프리뷰 원
+        # 브러시 프리뷰 원 (화면에서 일정한 크기 유지)
         if self.is_brush_mode:
             painter = self._painter  
-            r = self.brush_radius
+            # 스케일 변환 보정으로 화면에서 일정한 크기 유지
+            r = self.brush_radius / self.scale
             painter.setPen(Qt.NoPen)
             painter.setBrush(QColor(255, 255, 255, 200))
             painter.drawEllipse(self.prev_move_point, r, r)
@@ -1683,8 +1685,8 @@ class Canvas(
         # 2) 성능 최적화: 직접 마스크 수정 (복사 없이)
         old_sum = shape.mask.sum()  # 변경 감지용
         
-        # 3) 실제 브러시 연산 (기존 마스크에 직접 적용)
-        shape.mask = apply_brush_to_mask(shape.mask, pos.x(), pos.y(), radius=self.brush_radius, add=add)
+        # 3) 실제 브러시 연산 (기존 마스크에 직접 적용) - 전달받은 radius 사용
+        shape.mask = apply_brush_to_mask(shape.mask, pos.x(), pos.y(), radius=radius, add=add)
         
         # 4) 마스크가 완전히 사라지면 도형 삭제
         new_sum = shape.mask.sum()
@@ -1730,7 +1732,7 @@ class Canvas(
             # 직접 마스크 수정 (중간 체크 없이)
             shape.mask = apply_brush_to_mask(
                 shape.mask, pos.x(), pos.y(), 
-                radius=self.brush_radius, add=add
+                radius=max(1, int(self.brush_radius / self.scale)), add=add
             )
         
         # 배치 처리 후 한 번만 캐시 무효화
@@ -2513,19 +2515,30 @@ class Canvas(
         # 실제 브러시 동작에서 add/erase 분기 처리 필요
 
     def calculate_optimal_brush_size(self, image_width, image_height):
-        """이미지 크기에 따라 최적의 브러시 크기를 계산"""
-        # 기준: 1920x1080 화면에서 슬라이더 중앙값(30)이 적당하다고 가정
-        base_image_diagonal = (1920 ** 2 + 1080 ** 2) ** 0.5
+        """화면 표시 크기 기준으로 브러시 크기를 계산"""
+        # 현재 스케일 팩터 가져오기 (없으면 1.0으로 기본값)
+        current_scale = getattr(self, 'scale', 1.0)
         
-        # 이미지 크기에 따른 스케일 팩터 계산
-        image_diagonal = (image_width ** 2 + image_height ** 2) ** 0.5
-        scale_factor = image_diagonal / base_image_diagonal
+        # 화면에서 실제로 보이는 크기 계산
+        display_width = image_width * current_scale
+        display_height = image_height * current_scale
+        display_diagonal = (display_width ** 2 + display_height ** 2) ** 0.5
         
-        # 슬라이더 중앙값(30)을 기준으로 이미지 크기에 맞게 조정
-        base_slider_value = 50  # 슬라이더 중앙값
-        adjusted_slider_value = max(10, min(100, base_slider_value * scale_factor))
+        # 기준 화면 크기 (800x600 정도에서 브러시 크기 5가 적당)
+        base_display_diagonal = (800 ** 2 + 600 ** 2) ** 0.5
         
-        # 슬라이더 값을 브러시 크기로 변환 (슬라이더값 / 10)
-        brush_radius = adjusted_slider_value / 10.0
+        # 화면 표시 크기에 따른 스케일 팩터
+        display_scale_factor = display_diagonal / base_display_diagonal
         
-        return brush_radius, int(adjusted_slider_value)
+        # 기본 브러시 크기 (화면 기준)
+        base_brush_size = 5.0
+        base_slider_value = 60
+        
+        # 화면 크기에 맞춰 조정
+        adjusted_brush_size = base_brush_size * display_scale_factor
+        adjusted_slider_value = max(10, min(300, base_slider_value * display_scale_factor))
+        
+        # 실제 이미지 좌표계로 변환 (스케일 팩터 적용)
+        image_brush_size = adjusted_brush_size / current_scale
+        
+        return image_brush_size, int(adjusted_slider_value)

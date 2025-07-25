@@ -62,8 +62,8 @@ class BrushOptionsPanel(QWidget):
 
         self.slider = QSlider(Qt.Horizontal)
         self.slider.setMinimum(10)  
-        self.slider.setMaximum(100)  # 최대값을 50에서 100으로 증가
-        self.slider.setValue(30)     # 중앙값도 30으로 조정    
+        self.slider.setMaximum(250)
+        self.slider.setValue(120)
         self.slider.setMinimumWidth(160)
         self.slider.setMaximumWidth(240)
         self.slider.setFixedHeight(40)

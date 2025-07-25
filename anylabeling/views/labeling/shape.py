@@ -342,7 +342,9 @@ class Shape:
 
         # Extract contours
         contours, _ = cv2.findContours(mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-        pen = QtGui.QPen(QColor(r, g, b), 1)
+        # 스케일 보정으로 일관된 선 두께 유지 (일반 도형과 동일한 방식)
+        line_width = max(1, int(round(self.line_width / self.scale)))
+        pen = QtGui.QPen(QColor(r, g, b), line_width)
         painter.setPen(pen)
         painter.setBrush(QtCore.Qt.NoBrush)
 
@@ -362,8 +364,9 @@ class Shape:
             qimg = QImage(overlay.data, width, height, QImage.Format_RGBA8888)
             painter.drawImage(0, 0, qimg)
             
-            # White outline for selected state
-            pen = QtGui.QPen(QColor(255, 255, 255), 1)
+            # White outline for selected state (스케일 보정 적용)
+            white_line_width = max(1, int(round(self.line_width / self.scale)))
+            pen = QtGui.QPen(QColor(255, 255, 255), white_line_width)
             painter.setPen(pen)
             for contour in contours:
                 points = [QPointF(float(x), float(y)) for [[x, y]] in contour]
