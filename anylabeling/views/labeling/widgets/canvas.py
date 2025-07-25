@@ -150,6 +150,8 @@ class Canvas(
         self._mask_qimage_cache = {}
         self._mask_overlay_cache = {}
         self.eraser_mode = False  # ← 브러시/지우개 모드 상태 변수 초기화
+        self._brush_target_shape = None  
+        self._prev_brush_pos = None  
         
         # 성능 최적화 변수들
         self._brush_update_timer = QtCore.QTimer()
@@ -469,7 +471,6 @@ class Canvas(
                 self._brush_update_timer.stop()
                 self._brush_update_timer.start(8)  # 8ms 지연 (약 120fps)
                 self._prev_brush_pos = curr
-                self.brush_modified = True
                 return
             if self.selected_vertex():
                 self.is_move_editing = False
@@ -772,6 +773,14 @@ class Canvas(
                     
                     # 4. 브러시 타겟 설정 및 선택 상태 동기화
                     if brush_target != getattr(self, '_brush_target_shape', None):
+                        # 이전 타겟의 변경사항 저장 (중요!)
+                        if (hasattr(self, '_brush_target_shape') and 
+                            self._brush_target_shape is not None and 
+                            self.brush_modified):
+                            self.store_shapes()
+                            self.shape_moved.emit()  # undo 활성화
+                            self.brush_modified = False
+                        
                         self._brush_target_shape = brush_target
                         # 타겟이 변경되면 선택 상태도 동기화
                         if self._brush_target_shape is not None and self._brush_target_shape not in self.selected_shapes:
@@ -841,16 +850,15 @@ class Canvas(
             return
 
         if self.brush_modified:
+            self.store_shapes()
             # 브러시 타이머 정리 및 최종 업데이트
             self._brush_update_timer.stop()
             self.update()  # 최종 고품질 렌더링
-            
-            self.store_shapes()
             # 브러시 수정 완료 시 selection_changed 시그널 발생
             if self.selected_shapes:
                 self.selection_changed.emit(self.selected_shapes)
-            # 브러시 편집 중에는 shape_moved.emit() 호출하지 않음
-            # (브러시 모드 OFF 시에만 호출됨)
+            # 브러시 수정 완료 시 shape_moved 시그널 발생 (undo 활성화)
+            self.shape_moved.emit()
             self.brush_modified = False
 
         if ev.button() == QtCore.Qt.RightButton:
@@ -1657,9 +1665,6 @@ class Canvas(
 
     def edit_mask_with_brush(self, shape, pos, radius, add=True):
         """브러시 드래그 시 호출. pos는 widget 좌표, transform_pos로 이미지 좌표로 변환하세요."""
-        # # 0) 이미지 좌표로 변환
-        # image_pos = self.transform_pos(ev_localPos)
-        # x, y = int(image_pos.x()), int(image_pos.y())
 
         # 1) polygon/rect/rotation 일 때도 한번만 mask로 변환
         if shape.shape_type != "mask":
@@ -1673,12 +1678,8 @@ class Canvas(
                 (h, w),
             )
             shape.shape_type = "mask"
-            # mask로 변환했으므로 points는 더 이상 사용하지 않음 (중복 그리기 방지)
             shape.points = []
 
-            # polygon을 mask로 변환했으므로 shape 자체는 그대로 유지 (points는 더 이상 사용하지 않음)
-            # shape.shape_type만 "mask"로 변경하고 mask 속성만 추가
-        
         # 2) 성능 최적화: 직접 마스크 수정 (복사 없이)
         old_sum = shape.mask.sum()  # 변경 감지용
         
@@ -1710,9 +1711,7 @@ class Canvas(
             # 선택 상태 명시적으로 유지 (한 번만)
             if shape not in self.selected_shapes:
                 self.selected_shapes.append(shape)
-                # selection_changed는 드래그 중에는 emit하지 않음
-            
-            # 성능 최적화: 지연 업데이트
+
             self.update()
 
     def _delayed_brush_update(self):
@@ -2377,6 +2376,7 @@ class Canvas(
         if enabled:
             # polygon/rectangle/rotation → mask 변환
             if target_shape is not None and target_shape.shape_type in ["polygon", "rectangle", "rotation"]:
+                
                 h, w = self.pixmap.height(), self.pixmap.width()
                 mask = polygon_to_mask([(p.x(), p.y()) for p in target_shape.points], (h, w))
                 from ..shape import Shape

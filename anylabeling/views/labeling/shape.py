@@ -342,7 +342,7 @@ class Shape:
 
         # Extract contours
         contours, _ = cv2.findContours(mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-        pen = QtGui.QPen(QColor(r, g, b), 2)
+        pen = QtGui.QPen(QColor(r, g, b), 1)
         painter.setPen(pen)
         painter.setBrush(QtCore.Qt.NoBrush)
 
@@ -363,7 +363,7 @@ class Shape:
             painter.drawImage(0, 0, qimg)
             
             # White outline for selected state
-            pen = QtGui.QPen(QColor(255, 255, 255), 3)
+            pen = QtGui.QPen(QColor(255, 255, 255), 1)
             painter.setPen(pen)
             for contour in contours:
                 points = [QPointF(float(x), float(y)) for [[x, y]] in contour]

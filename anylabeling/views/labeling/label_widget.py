@@ -3019,11 +3019,7 @@ class LabelingWidget(LabelDialog):
                 AutoLabelingMode.REMOVE,
             ]
         ]
-        
-        # 디버깅: 저장되는 shape 정보 출력
-        print(f"[DEBUG] Saving {len(shapes)} shapes:")
-        for i, shape_dict in enumerate(shapes):
-            print(f"[DEBUG] Shape {i}: type={shape_dict.get('shape_type')}, label={shape_dict.get('label')}")
+
         flags = {}
         for i in range(self.flag_widget.count()):
             item = self.flag_widget.item(i)
@@ -4207,11 +4203,7 @@ class LabelingWidget(LabelDialog):
         """Apply auto labeling results to the current image."""
         if not self.image or not self.image_path:
             return
-
-        # DEBUG: Log shape_type and mask presence for each shape
-        for shape in auto_labeling_result.shapes:
-            print(f"[DEBUG] shape_type={getattr(shape, 'shape_type', None)}, has_mask={hasattr(shape, 'mask') and shape.mask is not None}, mask_shape={getattr(shape.mask, 'shape', None) if hasattr(shape, 'mask') and shape.mask is not None else None}")
-
+            
         # Clear existing shapes
         if auto_labeling_result.replace:
             self.load_shapes([], replace=True)
