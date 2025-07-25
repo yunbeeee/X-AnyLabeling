@@ -48,8 +48,8 @@ class Canvas(
     drawing_polygon = QtCore.pyqtSignal(bool)
     vertex_selected = QtCore.pyqtSignal(bool)
     auto_labeling_marks_updated = QtCore.pyqtSignal(list)
-    brush_mode_changed = QtCore.pyqtSignal(bool)  # 브러시 모드 on/off 알림
-    eraser_mode_changed = QtCore.pyqtSignal(bool)  # 지우개 모드 on/off 알림
+    brush_mode_changed = QtCore.pyqtSignal(bool) 
+    eraser_mode_changed = QtCore.pyqtSignal(bool)
 
     CREATE, EDIT = 0, 1
 
@@ -149,7 +149,7 @@ class Canvas(
         self.brush_modified = False
         self._mask_qimage_cache = {}
         self._mask_overlay_cache = {}
-        self.eraser_mode = False  # ← 브러시/지우개 모드 상태 변수 초기화
+        self.eraser_mode = False
         self._brush_target_shape = None  
         self._prev_brush_pos = None  
         
@@ -157,7 +157,7 @@ class Canvas(
         self._brush_update_timer = QtCore.QTimer()
         self._brush_update_timer.setSingleShot(True)
         self._brush_update_timer.timeout.connect(self._delayed_brush_update)
-        self._brush_stroke_batch = []  # 배치 처리용
+        self._brush_stroke_batch = [] 
 
     def set_loading(self, is_loading: bool, loading_text: str = None):
         """Set loading state"""
@@ -348,8 +348,8 @@ class Canvas(
         if self.is_loading:
             return
         try:
-            canvas_pos = ev.localPos()  # 또는 ev.pos()
-            image_pos = self.transform_pos(canvas_pos)  # 반드시 이미지 좌표계로 변환!
+            canvas_pos = ev.localPos()
+            image_pos = self.transform_pos(canvas_pos) 
         except AttributeError:
             return
 
@@ -2361,7 +2361,7 @@ class Canvas(
         # 브러시 모드를 켤 때는 현재 슬라이더 값을 사용
         if enabled:
             self.set_editing(True)
-            self.override_cursor(QtCore.Qt.BlankCursor)  # 마우스 커서 숨김
+            self.override_cursor(QtCore.Qt.BlankCursor)
             if hasattr(self, 'parent') and hasattr(self.parent, 'brush_options_panel'):
                 slider = self.parent.brush_options_panel.slider
                 self.brush_radius = slider.value() / 10.0
@@ -2376,7 +2376,6 @@ class Canvas(
         else:
             target_shape = self.selected_shapes[0] if self.selected_shapes else None
         if enabled:
-            # polygon/rectangle/rotation → mask 변환
             if target_shape is not None and target_shape.shape_type in ["polygon", "rectangle", "rotation"]:
                 
                 h, w = self.pixmap.height(), self.pixmap.width()
@@ -2388,7 +2387,7 @@ class Canvas(
                     group_id=target_shape.group_id,
                     mask=mask
                 )
-                # 원본 shape_type 저장 (이미 polygon인 경우 _original_shape_type 사용)
+                # 원본 shape_type 저장
                 if hasattr(target_shape, '_original_shape_type'):
                     mask_shape._original_shape_type = target_shape._original_shape_type
                 else:
@@ -2419,11 +2418,10 @@ class Canvas(
                 if ((shape.shape_type == "mask" and hasattr(shape, "mask") and shape.mask is not None) or 
                     (shape.shape_type in ["polygon", "rectangle", "rotation"] and hasattr(shape, "mask") and shape.mask is not None)):
                     mask_count += 1
-                    # 원래 타입 결정
+
                     if hasattr(shape, '_original_shape_type'):
                         original_type = shape._original_shape_type
                     else:
-                        # _original_shape_type이 없으면 기본적으로 polygon으로 변환
                         original_type = "polygon"
                     
                     mask = shape.mask
@@ -2465,7 +2463,7 @@ class Canvas(
                             self.selected_shapes.remove(shape)
                             self.selected_shapes.append(poly_shape)
                     else:
-                        # 유효하지 않은 polygon은 삭제
+                        # 유효하지 않은 polygon 삭제
                         shapes_to_remove.append(shape)
             
             # 변환 작업 실행
@@ -2479,9 +2477,9 @@ class Canvas(
             if self.selected_shapes:
                 self.selection_changed.emit(self.selected_shapes)
             
-            # label_list 동기화를 위해 시그널 발생 (실제 변환이 있을 때만)
+            # label_list 동기화를 위해 시그널 발생 
             if shapes_to_remove or shapes_to_add:
-                # label_list를 직접 업데이트 (store_shapes 호출 방지)
+                # label_list를 직접 업데이트
                 if self.parent and hasattr(self.parent, 'label_list'):
                     self.parent.label_list.clear()
                     for shape in self.shapes:
@@ -2495,7 +2493,7 @@ class Canvas(
             self._prev_brush_pos = None
         
         self.update()
-        self.brush_mode_changed.emit(enabled)  # 시그널 발생
+        self.brush_mode_changed.emit(enabled)
     
 
     def set_brush_radius(self, value):
@@ -2505,40 +2503,32 @@ class Canvas(
             slider = self.parent.brush_options_panel.slider
             # 슬라이더 값이 다를 때만 업데이트
             if abs(slider.value() - value * 10) > 0.1:
-                slider.blockSignals(True)  # 시그널 차단
+                slider.blockSignals(True)  
                 slider.setValue(int(value * 10))
-                slider.blockSignals(False)  # 시그널 복원
-        self.update()  # ← 슬라이더로 크기 바뀌면 즉시 프리뷰도 갱신
+                slider.blockSignals(False) 
+        self.update()  
+
 
     def set_eraser_mode(self, enabled):
-        self.eraser_mode = enabled  # eraser_mode 플래그 추가
-        # 실제 브러시 동작에서 add/erase 분기 처리 필요
+        self.eraser_mode = enabled 
+
 
     def calculate_optimal_brush_size(self, image_width, image_height):
         """화면 표시 크기 기준으로 브러시 크기를 계산"""
-        # 현재 스케일 팩터 가져오기 (없으면 1.0으로 기본값)
         current_scale = getattr(self, 'scale', 1.0)
         
-        # 화면에서 실제로 보이는 크기 계산
         display_width = image_width * current_scale
         display_height = image_height * current_scale
         display_diagonal = (display_width ** 2 + display_height ** 2) ** 0.5
         
-        # 기준 화면 크기 (800x600 정도에서 브러시 크기 5가 적당)
         base_display_diagonal = (800 ** 2 + 600 ** 2) ** 0.5
-        
-        # 화면 표시 크기에 따른 스케일 팩터
         display_scale_factor = display_diagonal / base_display_diagonal
         
-        # 기본 브러시 크기 (화면 기준)
         base_brush_size = 5.0
         base_slider_value = 60
-        
-        # 화면 크기에 맞춰 조정
         adjusted_brush_size = base_brush_size * display_scale_factor
         adjusted_slider_value = max(10, min(300, base_slider_value * display_scale_factor))
-        
-        # 실제 이미지 좌표계로 변환 (스케일 팩터 적용)
+
         image_brush_size = adjusted_brush_size / current_scale
         
         return image_brush_size, int(adjusted_slider_value)

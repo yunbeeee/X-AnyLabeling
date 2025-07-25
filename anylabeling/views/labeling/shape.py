@@ -79,7 +79,7 @@ class Shape:
         direction=0,
         attributes={},
         kie_linking=[],
-        mask=None, ## modified: add mask type
+        mask=None,
     ):
         self.label = label
         self.score = score
@@ -183,7 +183,7 @@ class Shape:
             "line",
             "circle",
             "linestrip",
-            "mask", # modified:
+            "mask",
         ]
 
     def close(self):
@@ -364,7 +364,7 @@ class Shape:
             qimg = QImage(overlay.data, width, height, QImage.Format_RGBA8888)
             painter.drawImage(0, 0, qimg)
             
-            # White outline for selected state (스케일 보정 적용)
+            # White outline for selected state
             white_line_width = max(1, int(round(self.line_width / self.scale)))
             pen = QtGui.QPen(QColor(255, 255, 255), white_line_width)
             painter.setPen(pen)

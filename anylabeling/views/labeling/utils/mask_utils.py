@@ -93,48 +93,6 @@ def polygon_to_mask(points, shape):
     return mask
 
 
-def mask_to_base64(mask):
-    """
-    Convert mask to base64 string for storage
-    
-    Args:
-        mask: numpy array - binary mask
-    
-    Returns:
-        base64 encoded string
-    """
-    import base64
-    
-    if mask is None:
-        return ""
-    
-    mask_bytes = mask.tobytes()
-    return base64.b64encode(mask_bytes).decode('utf-8')
-
-
-def base64_to_mask(base64_string, shape, dtype=np.uint8):
-    """
-    Convert base64 string to mask
-    
-    Args:
-        base64_string: base64 encoded string
-        shape: (height, width) of output mask
-        dtype: data type of mask
-    
-    Returns:
-        mask as numpy array
-    """
-    import base64
-    
-    if not base64_string:
-        return np.zeros(shape, dtype=dtype)
-    
-    mask_bytes = base64.b64decode(base64_string)
-    mask = np.frombuffer(mask_bytes, dtype=dtype).reshape(shape)
-    
-    return mask
-
-
 def resize_mask(mask, new_shape):
     """
     Resize mask to new shape

@@ -2846,12 +2846,12 @@ class LabelingWidget(LabelDialog):
         # modified
         # --- 브러시 버튼 활성화/비활성화 ---
         self.actions.edit_brush_mode.setEnabled(n_selected > 0)
-        # 브러시 모드 해제 및 패널 숨김 (선택 해제 시)
+        # 브러시 모드 해제 및 패널 숨김
         if n_selected == 0:
             # 브러시 모드가 켜져있지 않을 때만 패널 숨김
             if not self.canvas.is_brush_mode:
                 self.brush_options_panel.hide()
-        ######
+
         if self.attributes:
             # TODO: For future optimization(add parm to monitor selected_shape status)
             for i in range(len(self.canvas.shapes)):
