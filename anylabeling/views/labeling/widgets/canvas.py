@@ -2532,3 +2532,28 @@ class Canvas(
         image_brush_size = adjusted_brush_size / current_scale
         
         return image_brush_size, int(adjusted_slider_value)
+    
+    def set_shape_opacity(self, shape, opacity, is_mask=True):
+        """선택된 도형의 투명도 설정"""
+        if is_mask:
+            shape.set_mask_opacity(opacity)
+        else:
+            shape.set_fill_opacity(opacity)
+        self.update()
+    
+    def get_shape_opacity(self, shape, is_mask=True):
+        """선택된 도형의 투명도 반환"""
+        if is_mask:
+            return shape.get_mask_opacity()
+        else:
+            return shape.get_fill_opacity()
+    
+    def set_selected_shapes_opacity(self, opacity, is_mask=True):
+        """선택된 모든 도형의 투명도 설정"""
+        for shape in self.selected_shapes:
+            self.set_shape_opacity(shape, opacity, is_mask)
+    
+    def set_all_shapes_opacity(self, opacity, is_mask=True):
+        """모든 도형의 투명도 설정"""
+        for shape in self.shapes:
+            self.set_shape_opacity(shape, opacity, is_mask)

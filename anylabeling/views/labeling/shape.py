@@ -65,6 +65,9 @@ class Shape:
     point_size = 4
     scale = 1.5
     line_width = 2.0
+    # 투명도 설정 (0-255, 255는 완전 불투명)
+    mask_opacity = 100
+    fill_opacity = 100
 
     def __init__(
         self,
@@ -323,6 +326,11 @@ class Shape:
                     if self.selected
                     else self.fill_color
                 )
+                # 투명도 적용
+                if hasattr(self, 'fill_opacity') and self.fill_opacity != 255:
+                    # 기존 색상의 RGB 값을 유지하고 알파값만 변경
+                    if color.alpha() != self.fill_opacity:
+                        color.setAlpha(self.fill_opacity)
                 painter.fillPath(line_path, color)
 
     def paint_mask(self, painter, get_rgb_by_label_func=None):
@@ -360,7 +368,7 @@ class Shape:
         if self.selected:
             # Fill interior with semi-transparent color
             overlay = np.zeros((height, width, 4), dtype=np.uint8)
-            overlay[mask > 0] = [r, g, b, 100]
+            overlay[mask > 0] = [r, g, b, self.mask_opacity]
             qimg = QImage(overlay.data, width, height, QImage.Format_RGBA8888)
             painter.drawImage(0, 0, qimg)
             
@@ -529,3 +537,19 @@ class Shape:
     def is_mask(self):
         """Check if shape is a mask type"""
         return self.shape_type == "mask"
+    
+    def set_mask_opacity(self, opacity):
+        """마스크 투명도 설정 (0-255)"""
+        self.mask_opacity = max(0, min(255, opacity))
+    
+    def set_fill_opacity(self, opacity):
+        """채우기 투명도 설정 (0-255)"""
+        self.fill_opacity = max(0, min(255, opacity))
+    
+    def get_mask_opacity(self):
+        """마스크 투명도 반환"""
+        return getattr(self, 'mask_opacity', 100)
+    
+    def get_fill_opacity(self):
+        """채우기 투명도 반환"""
+        return getattr(self, 'fill_opacity', 100)

@@ -10,6 +10,7 @@ from .color_dialog import ColorDialog
 from .file_dialog_preview import FileDialogPreview
 from .filter_label_widget import GroupIDFilterComboBox, LabelFilterComboBox
 from .crosshair_settings_dialog import CrosshairSettingsDialog
+from .opacity_settings_dialog import OpacitySettingsDialog
 from .label_dialog import (
     LabelDialog,
     LabelQLineEdit,
@@ -19,6 +20,7 @@ from .label_dialog import (
 )
 from .model_dropdown_widget import SearchBar
 from .label_list_widget import LabelListWidget, LabelListWidgetItem
+from .opacity_settings_dialog import OpacitySettingsDialog
 from .overview_dialog import OverviewDialog
 from .popup import Popup
 from .toolbar import ToolBar
