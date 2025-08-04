@@ -65,7 +65,7 @@ class Shape:
     point_size = 4
     scale = 1.5
     line_width = 2.0
-    # 투명도 설정 (0-255, 255는 완전 불투명)
+    # Opacity settings (0-255, 255 is fully opaque)
     mask_opacity = 100
     fill_opacity = 100
 
@@ -326,11 +326,15 @@ class Shape:
                     if self.selected
                     else self.fill_color
                 )
-                # 투명도 적용
-                if hasattr(self, 'fill_opacity') and self.fill_opacity != 255:
-                    # 기존 색상의 RGB 값을 유지하고 알파값만 변경
-                    if color.alpha() != self.fill_opacity:
-                        color.setAlpha(self.fill_opacity)
+                # Apply opacity - use both fill_opacity and mask_opacity
+                opacity = self.fill_opacity
+                if hasattr(self, 'mask_opacity'):
+                    # Use mask_opacity if it's lower (more transparent)
+                    opacity = min(opacity, self.mask_opacity)
+                if opacity != 255:
+                    # Keep existing RGB values and only change alpha value
+                    if color.alpha() != opacity:
+                        color.setAlpha(opacity)
                 painter.fillPath(line_path, color)
 
     def paint_mask(self, painter, get_rgb_by_label_func=None):
@@ -539,17 +543,17 @@ class Shape:
         return self.shape_type == "mask"
     
     def set_mask_opacity(self, opacity):
-        """마스크 투명도 설정 (0-255)"""
+        """Set mask opacity (0-255)"""
         self.mask_opacity = max(0, min(255, opacity))
     
     def set_fill_opacity(self, opacity):
-        """채우기 투명도 설정 (0-255)"""
+        """Set fill opacity (0-255)"""
         self.fill_opacity = max(0, min(255, opacity))
     
     def get_mask_opacity(self):
-        """마스크 투명도 반환"""
+        """Get mask opacity"""
         return getattr(self, 'mask_opacity', 100)
     
     def get_fill_opacity(self):
-        """채우기 투명도 반환"""
+        """Get fill opacity"""
         return getattr(self, 'fill_opacity', 100)

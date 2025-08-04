@@ -2399,6 +2399,10 @@ class Canvas(
                 mask_shape.select_fill_color = target_shape.select_fill_color
                 mask_shape.vertex_fill_color = target_shape.vertex_fill_color
                 mask_shape.hvertex_fill_color = target_shape.hvertex_fill_color
+                
+                # 투명도 정보 복사 (폴리곤의 투명도를 마스크에 적용)
+                mask_shape.mask_opacity = target_shape.get_fill_opacity()
+                mask_shape.fill_opacity = target_shape.get_fill_opacity()
                 if target_shape in self.shapes:
                     self.shapes.remove(target_shape)
                 self.shapes.append(mask_shape)
@@ -2450,6 +2454,10 @@ class Canvas(
                         poly_shape.select_fill_color = shape.select_fill_color
                         poly_shape.vertex_fill_color = shape.vertex_fill_color
                         poly_shape.hvertex_fill_color = shape.hvertex_fill_color
+                        
+                        # 투명도 정보 복사 (마스크의 투명도를 폴리곤에 적용)
+                        poly_shape.mask_opacity = shape.get_mask_opacity()
+                        poly_shape.fill_opacity = shape.get_fill_opacity()
                         
                         # rotation 타입인 경우 direction 정보도 복사
                         if original_type == "rotation" and hasattr(shape, 'direction'):

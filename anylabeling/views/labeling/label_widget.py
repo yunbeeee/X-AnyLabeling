@@ -61,7 +61,6 @@ from .widgets import (
     DigitShortcutDialog,
     LabelModifyDialog,
     GroupIDModifyDialog,
-    OpacitySettingsDialog,
     OverviewDialog,
     SearchBar,
     ToolBar,
@@ -1967,24 +1966,12 @@ class LabelingWidget(LabelDialog):
             lambda checked: self.canvas.set_eraser_mode(checked)
         )
         
-
-        
-        # 브러시 패널의 투명도 설정 버튼 클릭 → 기존 다이얼로그 열기
-        self.brush_options_panel.opacity_btn.clicked.connect(
-            self.open_opacity_settings
-        )
-        
-        # 투명도 옵션 패널 시그널 연결
-        self.opacity_options_panel.apply_btn.clicked.connect(self.apply_opacity_settings)
-        self.opacity_options_panel.reset_btn.clicked.connect(self.reset_opacity_settings)
-        
         # 실시간 투명도 미리보기 (디바운싱 적용)
         self.opacity_preview_timer = QtCore.QTimer()
         self.opacity_preview_timer.setSingleShot(True)
         self.opacity_preview_timer.timeout.connect(self.preview_opacity_settings)
         
-        self.opacity_options_panel.mask_slider.valueChanged.connect(self.start_opacity_preview_timer)
-        self.opacity_options_panel.fill_slider.valueChanged.connect(self.start_opacity_preview_timer)
+        self.opacity_options_panel.opacity_slider.valueChanged.connect(self.start_opacity_preview_timer)
         
         # 투명도 옵션 패널에 이벤트 필터 설치
         self.opacity_options_panel.installEventFilter(self)
@@ -4589,8 +4576,10 @@ class LabelingWidget(LabelDialog):
                 # 패널이 숨겨져 있으면 브러시 버튼 근처에 표시
                 btn = self.tools.widgetForAction(self.actions.edit_brush_mode)
                 if btn:
-                    global_pos = btn.mapToGlobal(btn.rect().bottomLeft())
+                    global_pos = btn.mapToGlobal(btn.rect().topRight())
                     parent_pos = self.mapFromGlobal(global_pos)
+                    # 버튼과 패널 사이에 적절한 간격 추가 (10px)
+                    parent_pos.setX(parent_pos.x() + 10)
                     self.brush_options_panel.move(parent_pos)
                 self.brush_options_panel.show()
                 self.brush_options_panel.raise_()
@@ -4624,124 +4613,82 @@ class LabelingWidget(LabelDialog):
     
 
     
-    def open_opacity_settings(self):
-        """투명도 설정 다이얼로그 열기"""
-        if not self.canvas.selected_shapes:
-            return
-            
-        # 현재 선택된 도형의 투명도 값 가져오기
-        shape = self.canvas.selected_shapes[0]
-        mask_opacity = shape.get_mask_opacity()
-        fill_opacity = shape.get_fill_opacity()
-        
-        # 다이얼로그 열기
-        dialog = OpacitySettingsDialog(
-            mask_opacity=mask_opacity,
-            fill_opacity=fill_opacity,
-            parent=self
-        )
-        
-        if dialog.exec_() == QtWidgets.QDialog.Accepted:
-            settings = dialog.get_settings()
-            
-            # 선택된 모든 도형에 투명도 적용
-            for shape in self.canvas.selected_shapes:
-                if shape.is_mask():
-                    shape.set_mask_opacity(settings["mask_opacity"])
-                else:
-                    shape.set_fill_opacity(settings["fill_opacity"])
-            
-            # 캔버스 업데이트
-            self.canvas.update()
+
     
     def edit_opacity(self):
-        """투명도 편집 액션 - 툴바 버튼이나 단축키로 호출됨"""
+        """Edit opacity action - called by toolbar button or shortcut key"""
         self.toggle_opacity_options_panel()
     
     def toggle_opacity_options_panel(self):
-        """투명도 옵션 패널 토글"""
-        if not self.canvas.selected_shapes:
-            return
-            
+        """Toggle opacity options panel"""
         if self.opacity_options_panel.isVisible():
             self.opacity_options_panel.hide()
         else:
-            # 현재 선택된 도형의 투명도 값 가져오기
-            shape = self.canvas.selected_shapes[0]
-            mask_opacity = shape.get_mask_opacity()
-            fill_opacity = shape.get_fill_opacity()
+            # Get current opacity value from any shape (or use default)
+            current_opacity = 100  # 기본값
+            if self.canvas.shapes:
+                current_opacity = self.canvas.shapes[0].get_mask_opacity()
             
-            # 패널에 현재 값 설정
-            self.opacity_options_panel.set_opacity_values(mask_opacity, fill_opacity)
+            # Set current value to panel
+            self.opacity_options_panel.set_opacity_values(current_opacity, current_opacity)
             
-            # 패널을 투명도 버튼 근처에 표시
+            # Show panel near opacity button
             btn = self.tools.widgetForAction(self.actions.edit_opacity)
             if btn:
-                global_pos = btn.mapToGlobal(btn.rect().bottomLeft())
+                global_pos = btn.mapToGlobal(btn.rect().topRight())
                 parent_pos = self.mapFromGlobal(global_pos)
+                # 버튼과 패널 사이에 적절한 간격 추가 (10px)
+                parent_pos.setX(parent_pos.x() + 10)
                 self.opacity_options_panel.move(parent_pos)
             
             self.opacity_options_panel.show()
             self.opacity_options_panel.raise_()
-            # 패널을 항상 최상위에 표시
+            # Keep panel always on top
             self.opacity_options_panel.setWindowFlags(QtCore.Qt.WindowStaysOnTopHint)
     
     def apply_opacity_settings(self):
-        """투명도 설정을 선택된 도형에 적용"""
-        if not self.canvas.selected_shapes:
-            return
-            
-        mask_opacity, fill_opacity = self.opacity_options_panel.get_opacity_values()
+        """Apply opacity settings to all shapes"""
+        opacity = self.opacity_options_panel.get_opacity_values()[0]  # 단일 투명도 값 사용
         
-        # 선택된 모든 도형에 투명도 적용
-        for shape in self.canvas.selected_shapes:
-            if shape.is_mask():
-                shape.set_mask_opacity(mask_opacity)
-            else:
-                shape.set_fill_opacity(fill_opacity)
+        # Apply opacity to all shapes
+        for shape in self.canvas.shapes:
+            shape.set_mask_opacity(opacity)
+            shape.set_fill_opacity(opacity)
         
-        # 캔버스 업데이트
+        # Update canvas
         self.canvas.update()
-        
-        # 패널 숨기기
-        self.opacity_options_panel.hide()
     
     def reset_opacity_settings(self):
-        """투명도 설정을 기본값으로 리셋하고 미리보기"""
+        """Reset opacity settings to default and preview"""
         self.opacity_options_panel.reset_values()
         self.preview_opacity_settings()
     
     def preview_opacity_settings(self):
-        """투명도 설정을 실시간으로 미리보기"""
-        if not self.canvas.selected_shapes:
-            return
-            
-        mask_opacity, fill_opacity = self.opacity_options_panel.get_opacity_values()
+        """Preview opacity settings in real-time"""
+        opacity = self.opacity_options_panel.get_opacity_values()[0]  # 단일 투명도 값 사용
         
-        # 선택된 모든 도형에 투명도 미리보기 적용
-        for shape in self.canvas.selected_shapes:
-            if shape.is_mask():
-                shape.set_mask_opacity(mask_opacity)
-            else:
-                shape.set_fill_opacity(fill_opacity)
+        # Apply opacity preview to all shapes (not just selected ones)
+        for shape in self.canvas.shapes:
+            shape.set_mask_opacity(opacity)
+            shape.set_fill_opacity(opacity)
         
-                # 캔버스 업데이트
+        # Update canvas
         self.canvas.update()
     
     def start_opacity_preview_timer(self):
-        """투명도 미리보기 타이머 시작 (디바운싱)"""
+        """Start opacity preview timer (debouncing)"""
         self.opacity_preview_timer.start(100)  # 100ms 후에 미리보기 실행
     
     def eventFilter(self, obj, event):
-        """이벤트 필터 - 투명도 옵션 패널 외부 클릭 시 패널 닫기"""
+        """Event filter - close panel when clicking outside opacity options panel"""
         if obj == self.opacity_options_panel:
             if event.type() == QtCore.QEvent.MouseButtonPress:
-                # 패널 외부 클릭 시 패널 닫기
+                # Close panel when clicking outside
                 if not self.opacity_options_panel.geometry().contains(event.globalPos()):
                     self.opacity_options_panel.hide()
                     return True
             elif event.type() == QtCore.QEvent.KeyPress:
-                # ESC 키 누를 시 패널 닫기
+                # Close panel when pressing ESC key
                 if event.key() == QtCore.Qt.Key_Escape:
                     self.opacity_options_panel.hide()
                     return True
