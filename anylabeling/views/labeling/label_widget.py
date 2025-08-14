@@ -25,7 +25,6 @@ from PyQt5.QtWidgets import (
     QScrollArea,
     QToolBar,
     QAction,
-    QSpinBox,
 )
 
 from anylabeling.services.auto_labeling.types import AutoLabelingMode
@@ -4611,10 +4610,6 @@ class LabelingWidget(LabelDialog):
             # 브러시 모드 해제
             self.canvas.set_brush_mode(False)
     
-
-    
-
-    
     def edit_opacity(self):
         """Edit opacity action - called by toolbar button or shortcut key"""
         self.toggle_opacity_options_panel()
@@ -4648,7 +4643,7 @@ class LabelingWidget(LabelDialog):
     
     def apply_opacity_settings(self):
         """Apply opacity settings to all shapes"""
-        opacity = self.opacity_options_panel.get_opacity_values()[0]  # 단일 투명도 값 사용
+        opacity = self.opacity_options_panel.get_opacity_values()[0]
         
         # Apply opacity to all shapes
         for shape in self.canvas.shapes:
@@ -4665,9 +4660,9 @@ class LabelingWidget(LabelDialog):
     
     def preview_opacity_settings(self):
         """Preview opacity settings in real-time"""
-        opacity = self.opacity_options_panel.get_opacity_values()[0]  # 단일 투명도 값 사용
+        opacity = self.opacity_options_panel.get_opacity_values()[0]
         
-        # Apply opacity preview to all shapes (not just selected ones)
+        # Apply opacity preview to all shapes
         for shape in self.canvas.shapes:
             shape.set_mask_opacity(opacity)
             shape.set_fill_opacity(opacity)

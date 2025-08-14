@@ -6,6 +6,17 @@ from anylabeling.resources import resources
 
 
 class OpacityOptionsPanel(QWidget):
+    """
+    A simplified panel for adjusting opacity of all shapes in real-time.
+    
+    This panel provides a horizontal slider and reset button for unified opacity
+    control across all shape types (masks, polygons, rectangles, etc.).
+    
+    Attributes:
+        opacity_slider (QSlider): The main opacity control slider.
+        reset_btn (QToolButton): Button to reset opacity to default value.
+    """
+    
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setStyleSheet("""
@@ -63,16 +74,10 @@ class OpacityOptionsPanel(QWidget):
                 font-size: 12px;
                 font-weight: 500;
             }
-            QSpinBox {
-                background: white;
-                border: 1px solid #d2d2d7;
-                border-radius: 4px;
-                padding: 4px 8px;
-                min-height: 24px;
-            }
+
         """)
         
-        # 메인 레이아웃
+        # Main layout
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(16, 16, 16, 16)
         main_layout.setSpacing(12)
@@ -105,19 +110,53 @@ class OpacityOptionsPanel(QWidget):
         self.setMinimumHeight(80)
         self.setMaximumHeight(80)
         
-        # 슬라이더와 초기화 버튼 연결
+        # Connect reset button
         self.reset_btn.clicked.connect(self.reset_values)
     
-    def get_opacity_values(self):
-        """Return opacity value"""
+    def get_opacity_values(self) -> tuple[int, int]:
+        """
+        Get the current opacity values from the slider.
+        
+        Returns:
+            tuple[int, int]: A tuple containing (mask_opacity, fill_opacity) 
+                           where both values are identical for unified opacity.
+        
+        Examples:
+            >>> panel.get_opacity_values()
+            (100, 100)
+        """
         opacity = self.opacity_slider.value()
-        return opacity, opacity  # mask_opacity와 fill_opacity 모두 동일한 값 반환
+        return opacity, opacity  # Return same value for both mask and fill opacity
     
-    def set_opacity_values(self, mask_opacity, fill_opacity):
-        """Set opacity values (use the lower value between the two)"""
+    def set_opacity_values(self, mask_opacity: int, fill_opacity: int) -> None:
+        """
+        Set the opacity values in the slider.
+        
+        Uses the minimum value between mask_opacity and fill_opacity to ensure
+        consistent opacity across all shape types.
+        
+        Args:
+            mask_opacity (int): The mask opacity value (0-255).
+            fill_opacity (int): The fill opacity value (0-255).
+        
+        Examples:
+            >>> panel.set_opacity_values(150, 200)
+            >>> panel.opacity_slider.value()
+            150
+        """
         opacity = min(mask_opacity, fill_opacity)
         self.opacity_slider.setValue(opacity)
     
-    def reset_values(self):
-        """Reset to default value"""
+    def reset_values(self) -> None:
+        """
+        Reset the opacity slider to the default value.
+        
+        Sets the opacity slider to 100 (approximately 39% opacity) which
+        provides good visibility while maintaining transparency.
+        
+        Examples:
+            >>> panel.reset_values()
+            >>> panel.opacity_slider.value()
+            100
+        """
         self.opacity_slider.setValue(100) 

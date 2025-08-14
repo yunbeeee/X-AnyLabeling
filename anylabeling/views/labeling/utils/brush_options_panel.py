@@ -6,6 +6,17 @@ from anylabeling.resources import resources
 
 
 class BrushOptionsPanel(QWidget):
+    """
+    A panel for brush size control and eraser mode toggle.
+    
+    This panel provides a horizontal slider for brush size adjustment and
+    an eraser button for toggling between drawing and erasing modes.
+    
+    Attributes:
+        slider (QSlider): The brush size control slider.
+        eraser_btn (QToolButton): Button to toggle eraser mode.
+    """
+    
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setStyleSheet("""
@@ -63,7 +74,7 @@ class BrushOptionsPanel(QWidget):
             }
         """)
         
-        # 메인 레이아웃
+        # Main layout
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(16, 16, 16, 16)
         main_layout.setSpacing(12)
@@ -88,7 +99,7 @@ class BrushOptionsPanel(QWidget):
         self.eraser_btn.setIcon(QIcon(":/images/images/eraser.svg"))
         self.eraser_btn.setIconSize(QSize(20, 20))
         self.eraser_btn.setFixedSize(36, 36)
-        self.eraser_btn.setToolTip("지우개 모드")
+        self.eraser_btn.setToolTip(self.tr("Eraser Mode"))
         main_layout.addWidget(self.eraser_btn)
         
         self.setLayout(main_layout)
