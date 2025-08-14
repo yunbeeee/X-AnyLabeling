@@ -135,7 +135,7 @@ def calculate_optimal_brush_size(self, image_width, image_height):
 
 3. **브러시 편집**
    - 마우스 드래그로 브러시 스트로크
-   - `Ctrl` 키를 누른 상태로 지우개 모드
+   - `Shift` 키를 누른 상태로 지우개 모드
 
 4. **모드 종료**
    - `M` 키를 다시 눌러 브러시 모드 비활성화
