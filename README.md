@@ -10,7 +10,9 @@
 
 <p align="center">
     <a href="./LICENSE"><img src="https://img.shields.io/badge/License-LGPL%20v3-blue.svg"></a>
-    <a href=""><img src="https://img.shields.io/github/v/release/CVHub520/X-AnyLabeling?color=ffa"></a># X-AnyLabeling Customization for Dental AI Annotation Workflow
+    <a href=""><img src="https://img.shields.io/github/v/release/CVHub520/X-AnyLabeling?color=ffa"></a>
+
+# X-AnyLabeling Customization for Dental AI Annotation Workflow
 
 This repository is based on the open-source X-AnyLabeling project and was customized during my internship to better support project-specific dental image annotation workflows.
 
