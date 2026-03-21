@@ -10,7 +10,22 @@
 
 <p align="center">
     <a href="./LICENSE"><img src="https://img.shields.io/badge/License-LGPL%20v3-blue.svg"></a>
-    <a href=""><img src="https://img.shields.io/github/v/release/CVHub520/X-AnyLabeling?color=ffa"></a>
+    <a href=""><img src="https://img.shields.io/github/v/release/CVHub520/X-AnyLabeling?color=ffa"></a># X-AnyLabeling Customization for Dental AI Annotation Workflow
+
+This repository is based on the open-source X-AnyLabeling project and was customized during my internship to better support project-specific dental image annotation workflows.
+
+## What I worked on
+- Modified the annotation workflow to better fit real project requirements
+- Improved tool usability for practical labeling tasks
+- Adapted parts of the tool for a dental imaging annotation environment
+
+## Why this mattered
+In the internship environment, annotation quality and workflow efficiency directly affected downstream AI model development.  
+Rather than using an existing tool as-is, I worked on customizing it to better match actual project needs and labeling processes.
+
+---
+
+Below is the original project documentation.
     <a href=""><img src="https://img.shields.io/badge/python-3.10+-aff.svg"></a>
     <a href=""><img src="https://img.shields.io/badge/os-linux%2C%20win%2C%20mac-pink.svg"></a>
     <a href=""><img src="https://img.shields.io/github/downloads/CVHub520/X-AnyLabeling/total?label=downloads"></a>
